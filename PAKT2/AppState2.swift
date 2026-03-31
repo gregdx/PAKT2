@@ -658,7 +658,9 @@ extension APIClient.APIGroup {
             duration: ChallengeDuration(rawValue: duration) ?? .oneMonth,
             startDate: startDate,
             members: members.map { m in
-                Member(uid: m.userId, name: m.username, todayMinutes: 0, weekMinutes: 0, monthMinutes: 0, history: [], bio: m.bio)
+                let resolvedName = UsernameCache.resolve(uid: m.userId, name: m.username)
+                UsernameCache.store(uid: m.userId, name: m.username)
+                return Member(uid: m.userId, name: resolvedName, todayMinutes: 0, weekMinutes: 0, monthMinutes: 0, history: [], bio: m.bio)
             },
             isFinished: isFinished,
             creatorId: creatorId,

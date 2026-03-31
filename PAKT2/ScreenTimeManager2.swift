@@ -392,8 +392,9 @@ final class ScreenTimeManager: ObservableObject {
                     groupID: snap.idStr, since: startStr
                 ) else { continue }
 
-                // Debug: afficher les scores par user pour aujourd'hui
+                // Cache les usernames et debug
                 for s in scores where s.date == todayStr {
+                    if let name = s.username, !name.isEmpty { UsernameCache.store(uid: s.userId, name: name) }
                     print("[PAKT Scores] user=\(s.userId.prefix(8)) date=\(s.date) mins=\(s.minutes) social=\(s.socialMinutes)")
                 }
 

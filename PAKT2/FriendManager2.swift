@@ -50,7 +50,10 @@ final class FriendManager: ObservableObject {
         Task {
             if let apiFriends = try? await APIClient.shared.listFriends(), !apiFriends.isEmpty {
                 await MainActor.run {
-                    self.friends = apiFriends.map { AppUser(id: $0.userId, firstName: $0.username, email: "") }
+                    self.friends = apiFriends.map {
+                        UsernameCache.store(uid: $0.userId, name: $0.username)
+                        return AppUser(id: $0.userId, firstName: UsernameCache.resolve(uid: $0.userId, name: $0.username), email: "")
+                    }
                 }
             }
             if let requests = try? await APIClient.shared.listFriendRequests() {

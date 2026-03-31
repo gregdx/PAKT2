@@ -1,6 +1,25 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Username cache (resolves empty names from Apple Sign In users)
+
+enum UsernameCache {
+    private static var cache: [String: String] = [:]
+
+    /// Store a known uid → name mapping
+    static func store(uid: String, name: String) {
+        guard !uid.isEmpty, !name.isEmpty, name != uid, name.count > 2 else { return }
+        cache[uid] = name
+    }
+
+    /// Resolve a name: use provided if valid, else cache, else truncated uid
+    static func resolve(uid: String, name: String?) -> String {
+        if let n = name, !n.isEmpty, n != uid, n.count > 2 { return n }
+        if let cached = cache[uid] { return cached }
+        return String(uid.prefix(8))
+    }
+}
+
 // MARK: - UUID Identifiable (pour sheet(item:))
 extension UUID: @retroactive Identifiable {
     public var id: UUID { self }

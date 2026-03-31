@@ -83,12 +83,16 @@ final class ActivityManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] ws in
                 guard let self else { return }
-                // Ne pas dupliquer si déjà en local
                 guard !self.messages.contains(where: { $0.id == ws.id }) else { return }
+                // Resolve name: WebSocket payload > friends list > existing messages > truncated ID
+                let resolvedName = ws.fromName
+                    ?? FriendManager.shared.friends.first(where: { $0.id == ws.fromId })?.firstName
+                    ?? self.messages.last(where: { $0.fromId == ws.fromId })?.fromName
+                    ?? String(ws.fromId.prefix(8))
                 let msg = ChatMessage(
                     id: ws.id,
                     fromId: ws.fromId,
-                    fromName: ws.fromName ?? "",
+                    fromName: resolvedName,
                     toId: ws.toId,
                     text: ws.text,
                     activityTitle: ws.activityTitle,
@@ -152,7 +156,21 @@ final class ActivityManager: ObservableObject {
     func load() {
         Task {
             if let list: [ChatMessage] = try? await APIClient.shared.listActivityProposals() {
-                await MainActor.run { self.messages = list }
+                await MainActor.run {
+                    // Merge: keep local messages not on server, add server messages not local
+                    var merged = self.messages
+                    for serverMsg in list {
+                        if !merged.contains(where: { $0.id == serverMsg.id }) {
+                            merged.append(serverMsg)
+                        } else if let i = merged.firstIndex(where: { $0.id == serverMsg.id }) {
+                            // Update response from server if local doesn't have it
+                            if merged[i].response == nil && serverMsg.response != nil {
+                                merged[i].response = serverMsg.response
+                            }
+                        }
+                    }
+                    self.messages = merged.sorted { $0.createdAt < $1.createdAt }
+                }
             }
         }
     }
@@ -160,6 +178,8 @@ final class ActivityManager: ObservableObject {
     func sendText(_ text: String, toFriendId: String) {
         let msg = ChatMessage(fromId: myUid, fromName: AppState.shared.userName, toId: toFriendId, text: text)
         messages.append(msg)
+        // Save immediately for instant feedback
+        saveLocal()
         Task {
             try? await APIClient.shared.sendChatMessage(text: text, toId: toFriendId)
         }
@@ -171,6 +191,7 @@ final class ActivityManager: ObservableObject {
             activityTitle: activity.title, activityEmoji: activity.emoji
         )
         messages.append(msg)
+        saveLocal()
         Task {
             try? await APIClient.shared.sendActivityProposal(
                 activityTitle: activity.title, activityEmoji: activity.emoji, toId: toFriendId
@@ -264,7 +285,9 @@ struct ActivitiesView: View {
 
     func conversationRow(uid: String) -> some View {
         let friend = fm.friends.first { $0.id == uid }
-        let name = friend?.firstName ?? uid.prefix(8).description
+        // Fallback: check message history for the name if friend not in list
+        let nameFromMessages = manager.messagesWithFriend(uid).last(where: { $0.fromId == uid })?.fromName
+        let name = friend?.firstName ?? nameFromMessages ?? uid.prefix(8).description
         let last = manager.lastMessage(with: uid)
         let unread = manager.unreadCount(for: uid)
 
