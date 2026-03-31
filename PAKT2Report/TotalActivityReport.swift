@@ -13,7 +13,7 @@ struct TotalActivityReport: DeviceActivityReportExtension {
         WeekChartScene { data in ChartReportView(data: data) }
         WeekAvgScene { avg in AvgReportView(minutes: avg, label: "week avg") }
         MonthAvgScene { avg in AvgReportView(minutes: avg, label: "month avg") }
-        CategoriesScene { info in CategoriesReportView(info: info) }
+        CategoriesScene { data in CategoriesReportView(data: data) }
     }
 }
 
@@ -310,7 +310,6 @@ struct AvgReportView: View {
     let minutes: Int
     let label: String
     @Environment(\.openURL) private var openURL
-
     private var isWeek: Bool { label.contains("week") }
 
     var body: some View {
@@ -330,9 +329,7 @@ struct AvgReportView: View {
             let type = isWeek ? "weekavg" : "monthavg"
             let sharedKey = isWeek ? "shared_weekavg" : "shared_monthavg"
             writeToShared(key: sharedKey, value: minutes)
-            if let url = URL(string: "pakt2://\(type)?minutes=\(minutes)") {
-                openURL(url)
-            }
+            if let url = URL(string: "pakt2://\(type)?minutes=\(minutes)") { openURL(url) }
         }
     }
 }
@@ -440,41 +437,24 @@ struct ChartReportView: View {
             guard !entries.isEmpty else { return }
             let param = entries.joined(separator: ",")
             writeHistoryToShared(param)
-            // Envoyer l'historique Apple à l'app via URL scheme
-            if let url = URL(string: "pakt2://history?d=\(param)") {
-                openURL(url)
-            }
+            if let url = URL(string: "pakt2://history?d=\(param)") { openURL(url) }
         }
     }
 }
 
 // MARK: - Scene 6 : Social + per-app time breakdown
 
-struct CategoriesInfo {
-    let socialMinutes: Int
-    let perAppMinutes: [String: Int]  // keyword → minutes (e.g. "instagram": 45)
-}
-
 struct CategoriesScene: DeviceActivityReportScene {
     let context: DeviceActivityReport.Context = .init(rawValue: "categories")
-    let content: (CategoriesInfo) -> CategoriesReportView
+    let content: (Int) -> CategoriesReportView
 
-    func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> CategoriesInfo {
+    func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> Int {
         let socialKW = ["instagram","tiktok","snapchat","twitter","facebook","messenger",
                         "whatsapp","telegram","discord","reddit","threads","linkedin",
                         "bereal","signal","wechat","pinterest","mastodon","youtube"]
 
-        // Load tracked apps from App Group (set by the main app)
-        let trackedApps: Set<String> = {
-            guard let ud = UserDefaults(suiteName: appGroupID),
-                  let data = ud.data(forKey: "tracked_apps"),
-                  let apps = try? JSONDecoder().decode([String].self, from: data) else { return [] }
-            return Set(apps)
-        }()
-
         let todayStart = Calendar.current.startOfDay(for: Date())
         var socialMinutes = 0
-        var perApp: [String: Int] = [:]
 
         for await d in data {
             for await segment in d.activitySegments {
@@ -487,20 +467,9 @@ struct CategoriesScene: DeviceActivityReportScene {
                     for await a in catActivity.applications {
                         let name = (a.application.localizedDisplayName ?? "").lowercased()
                         let bundle = (a.application.bundleIdentifier ?? "").lowercased()
-                        let appMins = Int(a.totalActivityDuration / 60)
-
-                        // Social detection
                         if !isSocial {
                             for kw in socialKW where name.contains(kw) || bundle.contains(kw) {
                                 isSocial = true
-                                break
-                            }
-                        }
-
-                        // Per-app tracking: accumulate minutes for each tracked app
-                        for kw in socialKW {
-                            if name.contains(kw) || bundle.contains(kw) {
-                                perApp[kw, default: 0] += appMins
                                 break
                             }
                         }
@@ -510,52 +479,42 @@ struct CategoriesScene: DeviceActivityReportScene {
             }
         }
 
-        // Also compute tracked apps total (sum of only the apps the user chose)
-        let trackedTotal = trackedApps.reduce(0) { $0 + (perApp[$1] ?? 0) }
-
-        print("[PAKT CategoriesScene] social=\(socialMinutes) trackedTotal=\(trackedTotal) perApp=\(perApp)")
+        print("[PAKT CategoriesScene] social=\(socialMinutes)")
         if socialMinutes > 0 {
             writeToShared(key: "shared_social", value: socialMinutes)
             syncToBackendREST(socialMinutes: socialMinutes)
         }
-        // Store tracked apps total for groups with scope=.apps
-        if trackedTotal > 0 {
-            writeToShared(key: "shared_tracked", value: trackedTotal)
-        }
-
-        return CategoriesInfo(socialMinutes: socialMinutes, perAppMinutes: perApp)
+        return socialMinutes
     }
 }
 
 struct CategoriesReportView: View {
-    let info: CategoriesInfo
+    let data: Int
     var socialGoal: Int {
         let ag = UserDefaults(suiteName: appGroupID)?.integer(forKey: "socialGoalMinutes") ?? 0
         if ag > 0 { return ag }
         if let raw = keychainRead("pakt_socialGoal"), let v = Int(raw), v > 0 { return v }
-        return 120  // Default 2h
+        return 120
     }
-    var over: Bool { info.socialMinutes > socialGoal && socialGoal > 0 }
+    var over: Bool { data > socialGoal && socialGoal > 0 }
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(spacing: 4) {
-            Text(info.socialMinutes > 0 ? formatST(info.socialMinutes) : "--")
+            Text(data > 0 ? formatST(data) : "--")
                 .font(.system(size: 32, weight: .bold))
-                .foregroundColor(info.socialMinutes == 0 ? Color.primary : (over ? red : green))
+                .foregroundColor(data == 0 ? Color.primary : (over ? red : green))
             Text("ON SOCIAL MEDIA")
                 .font(.system(size: 9, weight: .medium))
                 .foregroundColor(Color.secondary.opacity(0.5))
                 .tracking(0.8)
         }
-        .preference(key: SocialMinutesKey.self, value: info.socialMinutes)
+        .preference(key: SocialMinutesKey.self, value: data)
         .onAppear {
-            guard info.socialMinutes > 0 else { return }
-            writeToShared(key: "shared_social", value: info.socialMinutes)
-            syncToBackendREST(socialMinutes: info.socialMinutes)
-            if let url = URL(string: "pakt2://categories?social=\(info.socialMinutes)") {
-                openURL(url)
-            }
+            guard data > 0 else { return }
+            writeToShared(key: "shared_social", value: data)
+            syncToBackendREST(socialMinutes: data)
+            if let url = URL(string: "pakt2://categories?social=\(data)") { openURL(url) }
         }
     }
 }
