@@ -6,7 +6,21 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		DA25A9702F697B5A00DBF8FD /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DA25A96F2F697B5A00DBF8FD /* DeviceActivity.framework */; };
+		DA25A9782F697B5A00DBF8FD /* PAKT2Report.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = DA25A96D2F697B5A00DBF8FD /* PAKT2Report.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		DAA406FC2F69B89700678381 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DA25A96F2F697B5A00DBF8FD /* DeviceActivity.framework */; };
+		DAA407042F69B89700678381 /* PAKT2Monitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = DAA406FB2F69B89700678381 /* PAKT2Monitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
+		DA25A9762F697B5A00DBF8FD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DA623C322F68AFD10072BEE7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DA25A96C2F697B5A00DBF8FD;
+			remoteInfo = PAKT2Report;
+		};
 		DA623C4A2F68AFD30072BEE7 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = DA623C322F68AFD10072BEE7 /* Project object */;
@@ -21,17 +35,85 @@
 			remoteGlobalIDString = DA623C392F68AFD10072BEE7;
 			remoteInfo = PAKT2;
 		};
+		DAA407022F69B89700678381 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DA623C322F68AFD10072BEE7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DAA406FA2F69B89700678381;
+			remoteInfo = PAKT2Monitor;
+		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		DA25A9792F697B5A00DBF8FD /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				DAA407042F69B89700678381 /* PAKT2Monitor.appex in Embed Foundation Extensions */,
+				DA25A9782F697B5A00DBF8FD /* PAKT2Report.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		DA25A96D2F697B5A00DBF8FD /* PAKT2Report.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PAKT2Report.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		DA25A96F2F697B5A00DBF8FD /* DeviceActivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DeviceActivity.framework; path = System/Library/Frameworks/DeviceActivity.framework; sourceTree = SDKROOT; };
 		DA623C3A2F68AFD10072BEE7 /* PAKT2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PAKT2.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DA623C492F68AFD30072BEE7 /* PAKT2Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PAKT2Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DA623C532F68AFD30072BEE7 /* PAKT2UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PAKT2UITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DAA406FB2F69B89700678381 /* PAKT2Monitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PAKT2Monitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		DA25A9912F697DE700DBF8FD /* Exceptions for "PAKT2Report" folder in "PAKT2Report" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = DA25A96C2F697B5A00DBF8FD /* PAKT2Report */;
+		};
+		DA25A9932F69864900DBF8FD /* Exceptions for "PAKT2" folder in "PAKT2Report" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ScreenTimeShared.swift,
+			);
+			target = DA25A96C2F697B5A00DBF8FD /* PAKT2Report */;
+		};
+		DAA406F62F69B79E00678381 /* Exceptions for "PAKT2" folder in "PAKT2" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = DA623C392F68AFD10072BEE7 /* PAKT2 */;
+		};
+		DAA407082F69B89700678381 /* Exceptions for "PAKT2Monitor" folder in "PAKT2Monitor" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = DAA406FA2F69B89700678381 /* PAKT2Monitor */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		DA25A9712F697B5A00DBF8FD /* PAKT2Report */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				DA25A9912F697DE700DBF8FD /* Exceptions for "PAKT2Report" folder in "PAKT2Report" target */,
+			);
+			path = PAKT2Report;
+			sourceTree = "<group>";
+		};
 		DA623C3C2F68AFD10072BEE7 /* PAKT2 */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				DAA406F62F69B79E00678381 /* Exceptions for "PAKT2" folder in "PAKT2" target */,
+				DA25A9932F69864900DBF8FD /* Exceptions for "PAKT2" folder in "PAKT2Report" target */,
+			);
 			path = PAKT2;
 			sourceTree = "<group>";
 		};
@@ -45,9 +127,25 @@
 			path = PAKT2UITests;
 			sourceTree = "<group>";
 		};
+		DAA406FD2F69B89700678381 /* PAKT2Monitor */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				DAA407082F69B89700678381 /* Exceptions for "PAKT2Monitor" folder in "PAKT2Monitor" target */,
+			);
+			path = PAKT2Monitor;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		DA25A96A2F697B5A00DBF8FD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DA25A9702F697B5A00DBF8FD /* DeviceActivity.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DA623C372F68AFD10072BEE7 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -69,15 +167,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DAA406F82F69B89700678381 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DAA406FC2F69B89700678381 /* DeviceActivity.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		DA25A96E2F697B5A00DBF8FD /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				DA25A96F2F697B5A00DBF8FD /* DeviceActivity.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		DA623C312F68AFD10072BEE7 = {
 			isa = PBXGroup;
 			children = (
 				DA623C3C2F68AFD10072BEE7 /* PAKT2 */,
 				DA623C4C2F68AFD30072BEE7 /* PAKT2Tests */,
 				DA623C562F68AFD30072BEE7 /* PAKT2UITests */,
+				DA25A9712F697B5A00DBF8FD /* PAKT2Report */,
+				DAA406FD2F69B89700678381 /* PAKT2Monitor */,
+				DA25A96E2F697B5A00DBF8FD /* Frameworks */,
 				DA623C3B2F68AFD10072BEE7 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,6 +205,8 @@
 				DA623C3A2F68AFD10072BEE7 /* PAKT2.app */,
 				DA623C492F68AFD30072BEE7 /* PAKT2Tests.xctest */,
 				DA623C532F68AFD30072BEE7 /* PAKT2UITests.xctest */,
+				DA25A96D2F697B5A00DBF8FD /* PAKT2Report.appex */,
+				DAA406FB2F69B89700678381 /* PAKT2Monitor.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,6 +214,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		DA25A96C2F697B5A00DBF8FD /* PAKT2Report */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DA25A97D2F697B5A00DBF8FD /* Build configuration list for PBXNativeTarget "PAKT2Report" */;
+			buildPhases = (
+				DA25A9692F697B5A00DBF8FD /* Sources */,
+				DA25A96A2F697B5A00DBF8FD /* Frameworks */,
+				DA25A96B2F697B5A00DBF8FD /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				DA25A9712F697B5A00DBF8FD /* PAKT2Report */,
+			);
+			name = PAKT2Report;
+			packageProductDependencies = (
+			);
+			productName = PAKT2Report;
+			productReference = DA25A96D2F697B5A00DBF8FD /* PAKT2Report.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		DA623C392F68AFD10072BEE7 /* PAKT2 */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = DA623C5D2F68AFD30072BEE7 /* Build configuration list for PBXNativeTarget "PAKT2" */;
@@ -102,10 +243,13 @@
 				DA623C362F68AFD10072BEE7 /* Sources */,
 				DA623C372F68AFD10072BEE7 /* Frameworks */,
 				DA623C382F68AFD10072BEE7 /* Resources */,
+				DA25A9792F697B5A00DBF8FD /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				DA25A9772F697B5A00DBF8FD /* PBXTargetDependency */,
+				DAA407032F69B89700678381 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				DA623C3C2F68AFD10072BEE7 /* PAKT2 */,
@@ -163,6 +307,28 @@
 			productReference = DA623C532F68AFD30072BEE7 /* PAKT2UITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		DAA406FA2F69B89700678381 /* PAKT2Monitor */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DAA407052F69B89700678381 /* Build configuration list for PBXNativeTarget "PAKT2Monitor" */;
+			buildPhases = (
+				DAA406F72F69B89700678381 /* Sources */,
+				DAA406F82F69B89700678381 /* Frameworks */,
+				DAA406F92F69B89700678381 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				DAA406FD2F69B89700678381 /* PAKT2Monitor */,
+			);
+			name = PAKT2Monitor;
+			packageProductDependencies = (
+			);
+			productName = PAKT2Monitor;
+			productReference = DAA406FB2F69B89700678381 /* PAKT2Monitor.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -173,6 +339,9 @@
 				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
+					DA25A96C2F697B5A00DBF8FD = {
+						CreatedOnToolsVersion = 26.3;
+					};
 					DA623C392F68AFD10072BEE7 = {
 						CreatedOnToolsVersion = 26.3;
 					};
@@ -183,6 +352,9 @@
 					DA623C522F68AFD30072BEE7 = {
 						CreatedOnToolsVersion = 26.3;
 						TestTargetID = DA623C392F68AFD10072BEE7;
+					};
+					DAA406FA2F69B89700678381 = {
+						CreatedOnToolsVersion = 26.3;
 					};
 				};
 			};
@@ -195,6 +367,8 @@
 			);
 			mainGroup = DA623C312F68AFD10072BEE7;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DA623C3B2F68AFD10072BEE7 /* Products */;
 			projectDirPath = "";
@@ -203,11 +377,20 @@
 				DA623C392F68AFD10072BEE7 /* PAKT2 */,
 				DA623C482F68AFD30072BEE7 /* PAKT2Tests */,
 				DA623C522F68AFD30072BEE7 /* PAKT2UITests */,
+				DA25A96C2F697B5A00DBF8FD /* PAKT2Report */,
+				DAA406FA2F69B89700678381 /* PAKT2Monitor */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		DA25A96B2F697B5A00DBF8FD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DA623C382F68AFD10072BEE7 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -229,9 +412,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DAA406F92F69B89700678381 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		DA25A9692F697B5A00DBF8FD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DA623C362F68AFD10072BEE7 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -253,9 +450,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DAA406F72F69B89700678381 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		DA25A9772F697B5A00DBF8FD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DA25A96C2F697B5A00DBF8FD /* PAKT2Report */;
+			targetProxy = DA25A9762F697B5A00DBF8FD /* PBXContainerItemProxy */;
+		};
 		DA623C4B2F68AFD30072BEE7 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = DA623C392F68AFD10072BEE7 /* PAKT2 */;
@@ -266,9 +475,79 @@
 			target = DA623C392F68AFD10072BEE7 /* PAKT2 */;
 			targetProxy = DA623C542F68AFD30072BEE7 /* PBXContainerItemProxy */;
 		};
+		DAA407032F69B89700678381 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DAA406FA2F69B89700678381 /* PAKT2Monitor */;
+			targetProxy = DAA407022F69B89700678381 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		DA25A97A2F697B5A00DBF8FD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
+				CODE_SIGN_ENTITLEMENTS = PAKT2Report/PAKT2Report.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9U5UZW39LQ;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PAKT2Report/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PAKT2Report;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.PAKT2.PAKT2Report;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		DA25A97B2F697B5A00DBF8FD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
+				CODE_SIGN_ENTITLEMENTS = PAKT2Report/PAKT2Report.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9U5UZW39LQ;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PAKT2Report/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PAKT2Report;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.PAKT2.PAKT2Report;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		DA623C5B2F68AFD30072BEE7 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -390,6 +669,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
+				CODE_SIGN_ENTITLEMENTS = PAKT2/PAKT2.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9U5UZW39LQ;
@@ -398,6 +680,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PAKT2/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PAKT;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -408,13 +692,14 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.PAKT2;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -434,6 +719,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
+				CODE_SIGN_ENTITLEMENTS = PAKT2/PAKT2.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9U5UZW39LQ;
@@ -442,6 +730,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PAKT2/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PAKT;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -452,13 +742,14 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.PAKT2;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -477,15 +768,17 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9U5UZW39LQ;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.PAKT2Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -503,15 +796,17 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9U5UZW39LQ;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.PAKT2Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -532,7 +827,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9U5UZW39LQ;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.PAKT2UITests;
@@ -557,7 +852,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9U5UZW39LQ;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.PAKT2UITests;
@@ -575,9 +870,85 @@
 			};
 			name = Release;
 		};
+		DAA407062F69B89700678381 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = PAKT2Monitor/PAKT2Monitor.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9U5UZW39LQ;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PAKT2Monitor/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PAKT2Monitor;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.PAKT2.PAKT2Monitor;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		DAA407072F69B89700678381 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = PAKT2Monitor/PAKT2Monitor.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9U5UZW39LQ;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PAKT2Monitor/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PAKT2Monitor;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.PAKT2.PAKT2Monitor;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		DA25A97D2F697B5A00DBF8FD /* Build configuration list for PBXNativeTarget "PAKT2Report" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DA25A97A2F697B5A00DBF8FD /* Debug */,
+				DA25A97B2F697B5A00DBF8FD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		DA623C352F68AFD10072BEE7 /* Build configuration list for PBXProject "PAKT2" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -610,6 +981,15 @@
 			buildConfigurations = (
 				DA623C642F68AFD30072BEE7 /* Debug */,
 				DA623C652F68AFD30072BEE7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		DAA407052F69B89700678381 /* Build configuration list for PBXNativeTarget "PAKT2Monitor" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DAA407062F69B89700678381 /* Debug */,
+				DAA407072F69B89700678381 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

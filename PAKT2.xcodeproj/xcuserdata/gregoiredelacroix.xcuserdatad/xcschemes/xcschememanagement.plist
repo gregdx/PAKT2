@@ -7,7 +7,45 @@
 		<key>PAKT2.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
+			<integer>3</integer>
+		</dict>
+		<key>PAKT2Monitor.xcscheme_^#shared#^_</key>
+		<dict>
+			<key>orderHint</key>
 			<integer>0</integer>
+		</dict>
+		<key>PAKT2Report.xcscheme_^#shared#^_</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>1</integer>
+		</dict>
+		<key>Promises (Playground) 1.xcscheme</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>3</integer>
+		</dict>
+		<key>Promises (Playground).xcscheme</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>2</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>DA25A96C2F697B5A00DBF8FD</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>DA623C392F68AFD10072BEE7</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>DAA406FA2F69B89700678381</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>
