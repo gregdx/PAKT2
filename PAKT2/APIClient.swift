@@ -501,6 +501,17 @@ class APIClient {
         struct Body: Encodable { let response: String }
         let _: EmptyResponse = try await request(.POST, "/chat/\(id)/respond", body: Body(response: response))
     }
+
+    // MARK: - Group Chat
+
+    func listGroupMessages(groupID: String) async throws -> [ChatMessage] {
+        try await request(.GET, "/chat/group/\(groupID)")
+    }
+
+    func sendGroupMessage(groupID: String, text: String) async throws {
+        struct Body: Encodable { let text: String }
+        let _: EmptyResponse = try await request(.POST, "/chat/group/\(groupID)", body: Body(text: text))
+    }
 }
 
 // MARK: - Helpers

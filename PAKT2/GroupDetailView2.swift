@@ -17,7 +17,9 @@ struct GroupDetailView: View {
     @State private var invitedIds: Set<String> = []
     @ObservedObject private var friendManager = FriendManager.shared
     @ObservedObject private var stManager = ScreenTimeManager.shared
+    @ObservedObject private var chatManager = ActivityManager.shared
     @AppStorage("isDarkMode") private var isDarkMode = false
+    @State private var showGroupChat = false
 
     private var groupOpt: Group? {
         appState.groups.first { $0.id == groupId }
@@ -97,6 +99,12 @@ struct GroupDetailView: View {
                 showResult = true
             }
         }
+        .sheet(isPresented: $showGroupChat) {
+            if groupOpt != nil {
+                GroupChatView(group: group)
+                    .environmentObject(appState)
+            }
+        }
         .sheet(isPresented: $showEdit) {
             if groupOpt != nil {
                 EditGroupView(group: group).environmentObject(appState)
@@ -136,6 +144,12 @@ struct GroupDetailView: View {
                 .font(.system(size: 22, weight: .bold))
                 .foregroundColor(Theme.text)
             Spacer()
+            Button(action: { showGroupChat = true }) {
+                Image(systemName: "bubble.left.and.bubble.right")
+                    .font(.system(size: 16))
+                    .foregroundColor(Theme.textMuted)
+            }
+            .accessibilityLabel("Group chat")
             Button(action: { showEdit = true }) {
                 Image(systemName: "pencil")
                     .font(.system(size: 16))

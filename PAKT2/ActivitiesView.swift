@@ -33,7 +33,8 @@ struct ChatMessage: Identifiable, Codable {
     var id: String = UUID().uuidString
     var fromId: String
     var fromName: String
-    var toId: String
+    var toId: String = ""
+    var groupId: String? = nil
     var createdAt: Date = Date()
 
     // Text message
@@ -200,6 +201,35 @@ final class ActivityManager: ObservableObject {
             try? await APIClient.shared.respondToProposal(id: msg.id, response: response.rawValue)
         }
     }
+
+    // MARK: - Group Chat
+
+    func messagesForGroup(_ groupId: String) -> [ChatMessage] {
+        messages.filter { $0.groupId == groupId }.sorted { $0.createdAt < $1.createdAt }
+    }
+
+    func sendGroupText(_ text: String, groupId: String) {
+        let msg = ChatMessage(fromId: myUid, fromName: AppState.shared.userName, groupId: groupId, text: text)
+        messages.append(msg)
+        saveLocal()
+        Task {
+            try? await APIClient.shared.sendGroupMessage(groupID: groupId, text: text)
+        }
+    }
+
+    func loadGroupMessages(_ groupId: String) {
+        Task {
+            if let list: [ChatMessage] = try? await APIClient.shared.listGroupMessages(groupID: groupId) {
+                await MainActor.run {
+                    for msg in list {
+                        if !self.messages.contains(where: { $0.id == msg.id }) {
+                            self.messages.append(msg)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Picked friend helper
@@ -218,6 +248,7 @@ struct ActivitiesView: View {
     @ObservedObject private var fm = FriendManager.shared
     @State private var pickedFriend: PickedFriend? = nil
     @State private var showNewConversation = false
+    @State private var selectedGroupChat: UUID? = nil
 
     var body: some View {
         NavigationView {
@@ -257,6 +288,15 @@ struct ActivitiesView: View {
                 ConversationView(friendUid: friend.uid, friendName: friend.name, onClose: { pickedFriend = nil })
                     .environmentObject(appState)
             }
+            .sheet(isPresented: Binding(
+                get: { selectedGroupChat != nil },
+                set: { if !$0 { selectedGroupChat = nil } }
+            )) {
+                if let gid = selectedGroupChat, let group = appState.groups.first(where: { $0.id == gid }) {
+                    GroupChatView(group: group)
+                        .environmentObject(appState)
+                }
+            }
             .onAppear { manager.load() }
         }
         .navigationViewStyle(.stack)
@@ -277,7 +317,48 @@ struct ActivitiesView: View {
                         .padding(.top, 60)
                 }
             } else {
-                // Active conversations
+                // Group chats
+                if !appState.groups.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(appState.groups.filter { $0.isActive }) { group in
+                            Button(action: { selectedGroupChat = group.id }) {
+                                HStack(spacing: 14) {
+                                    // Stacked avatars
+                                    ZStack {
+                                        ForEach(Array(group.members.prefix(3).enumerated()), id: \.offset) { i, m in
+                                            AvatarView(name: m.name, size: 32, color: Theme.textMuted,
+                                                       uid: m.uid, isMe: appState.isMe(m))
+                                                .environmentObject(appState)
+                                                .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
+                                                .offset(x: CGFloat(i) * 10)
+                                        }
+                                    }
+                                    .frame(width: 48 + CGFloat(min(group.members.count - 1, 2)) * 10, height: 48, alignment: .leading)
+
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(group.name)
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(Theme.text)
+                                        Text("\(group.members.count) members")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(Theme.textMuted)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(Theme.textFaint)
+                                }
+                                .padding(14)
+                                .liquidGlass(cornerRadius: 16)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                }
+
+                // Direct conversations
                 VStack(spacing: 8) {
                     ForEach(convUids, id: \.self) { uid in
                         conversationCard(uid: uid)
