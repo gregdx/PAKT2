@@ -291,6 +291,13 @@ class AppState: ObservableObject {
             UserDefaults.standard.set(data, forKey: key("groupsData"))
             UserDefaults.standard.synchronize()
         }
+        // Share tracked apps with the Report extension via App Group
+        let allTrackedApps = Set(groups.filter { $0.scope == .apps }.flatMap { $0.trackedApps })
+        let ud = UserDefaults(suiteName: kAppGroupID)
+        if let json = try? JSONEncoder().encode(Array(allTrackedApps)) {
+            ud?.set(json, forKey: "tracked_apps")
+        }
+        ud?.synchronize()
     }
 
     // MARK: - Sync Backend
@@ -366,18 +373,8 @@ class AppState: ObservableObject {
             return
         }
 
-        // Le backend est la source de vérité pour la structure des groupes
-        // Mais préserver scope/trackedApps local tant que le backend ne les supporte pas
-        var merged = remote
-        for i in merged.indices {
-            if let local = groups.first(where: { $0.id == merged[i].id }) {
-                if local.scope == .apps || local.scope == .social {
-                    merged[i].scope = local.scope
-                    merged[i].trackedApps = local.trackedApps
-                }
-            }
-        }
-        groups = merged
+        // Le backend est la source de vérité pour tout (scope, trackedApps inclus)
+        groups = remote
         saveGroupsLocal()
     }
 
@@ -392,11 +389,7 @@ class AppState: ObservableObject {
                     stake: group.stake, requiredPlayers: group.requiredPlayers,
                     trackedApps: group.trackedApps
                 )
-                var serverGroup = apiGroup.toGroup()
-                // Le backend ne supporte pas encore scope "apps" / trackedApps
-                // Préserver les valeurs locales
-                serverGroup.scope = group.scope
-                serverGroup.trackedApps = group.trackedApps
+                let serverGroup = apiGroup.toGroup()
                 await MainActor.run {
                     self.groups.append(serverGroup)
                     self.saveGroupsLocal()

@@ -33,6 +33,7 @@ final class ScreenTimeManager: ObservableObject {
     @Published var profileMonthAvg: Int = 0
     @Published var profileHistory: [ProfileDayData] = []
     @Published var categorySocial: Int = 0
+    @Published var trackedAppMinutes: Int = 0  // Per-app tracking total for scope=.apps groups
     @Published var currentStreak: Int = 0
     @Published var memberStreaks: [String: Int] = [:]
     @Published var memberLastSync: [String: Date] = [:]
@@ -112,6 +113,11 @@ final class ScreenTimeManager: ObservableObject {
         }
         if profileWeekAvg == 0 { profileWeekAvg = sharedUD?.integer(forKey: "shared_weekavg") ?? 0 }
         if profileMonthAvg == 0 { profileMonthAvg = sharedUD?.integer(forKey: "shared_monthavg") ?? 0 }
+        if trackedAppMinutes == 0 {
+            let v = sharedUD?.integer(forKey: "shared_tracked") ?? 0
+            let d = sharedUD?.string(forKey: "shared_tracked_date") ?? ""
+            if v > 0 && d == today { trackedAppMinutes = v }
+        }
 
         // === 3. Fallback: Keychain (fonctionne même quand App Group est cassé) ===
 
