@@ -149,6 +149,7 @@ enum L10n {
         "screen_time_status":   "screen time",
         "connected":            "connected",
         "not_connected":        "not connected",
+        "open_screen_time_settings": "Open Screen Time settings",
         "privacy_policy":       "Privacy policy",
         "help_feedback":        "Help & feedback",
         "version":              "version",

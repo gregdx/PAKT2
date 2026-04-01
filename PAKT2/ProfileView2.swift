@@ -208,7 +208,12 @@ struct ProfileView: View {
         .sheet(isPresented: $showFriends) {
             FriendsView().environmentObject(appState)
         }
-        .sheet(isPresented: $showSettings) {
+        .sheet(isPresented: $showSettings, onDismiss: {
+            if stManager.pendingAuthRequest {
+                stManager.pendingAuthRequest = false
+                Task { await stManager.requestAuthorization() }
+            }
+        }) {
             SettingsView().environmentObject(appState)
         }
         .sheet(isPresented: $showGroupDetail) {

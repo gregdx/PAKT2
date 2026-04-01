@@ -436,14 +436,7 @@ struct CreateGroupView: View {
                 ForEach(AppDef.all) { app in
                     let isSelected = selectedApps.contains(app.id)
                     VStack(spacing: 6) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(app.color)
-                                .frame(width: 40, height: 40)
-                            Text(app.letter)
-                                .font(.system(size: 18, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
-                        }
+                        AppIconView(app: app, size: 40)
                         Text(app.name)
                             .font(.system(size: 11, weight: isSelected ? .bold : .regular))
                             .foregroundColor(isSelected ? Theme.text : Theme.textFaint)

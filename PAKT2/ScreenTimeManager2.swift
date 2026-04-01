@@ -51,6 +51,31 @@ final class ScreenTimeManager: ObservableObject {
         let sharedToday = keychainRead("shared_today") ?? "nil"
         print("[PAKT] Keychain from extension: dar=\(darDebug) shared_today=\(sharedToday)")
         loadProfileCache()
+        registerDarwinNotification()
+    }
+
+    /// Écoute les Darwin notifications postées par les extensions DAR/Monitor
+    /// pour relire immédiatement les données du App Group / Keychain
+    private func registerDarwinNotification() {
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        let observer = Unmanaged.passUnretained(self).toOpaque()
+        CFNotificationCenterAddObserver(
+            center,
+            observer,
+            { _, observer, _, _, _ in
+                guard let observer else { return }
+                let mgr = Unmanaged<ScreenTimeManager>.fromOpaque(observer).takeUnretainedValue()
+                DispatchQueue.main.async {
+                    print("[PAKT] Darwin notification received — reloading profile cache")
+                    mgr.loadProfileCache()
+                    mgr.updateLocalGroups(appState: AppState.shared)
+                    mgr.syncToBackend(appState: AppState.shared)
+                }
+            },
+            "com.PAKT2.screenTimeUpdate" as CFString,
+            nil,
+            .deliverImmediately
+        )
     }
 
     private let sharedUD = UserDefaults(suiteName: "group.com.PAKT2")
@@ -78,63 +103,81 @@ final class ScreenTimeManager: ObservableObject {
 
     func loadProfileCache() {
         let today = Self.dateFormatter.string(from: Date())
+        var todaySource = "none"
+        var socialSource = "none"
+        var weekSource = "none"
+        var monthSource = "none"
 
-        // === 1. Cache standard (alimenté par openURL / updateCategorySocial) ===
+        // === 1. Cache standard (alimenté par openURL / preference keys) ===
 
-        // profileToday : vérifie la date
         if UserDefaults.standard.string(forKey: UDKey.todayDate) == today {
             profileToday = UserDefaults.standard.integer(forKey: UDKey.todayMinutes)
+            if profileToday > 0 { todaySource = "ud_standard" }
         } else {
             profileToday = 0
         }
 
-        // categorySocial : vérifie la date (CORRIGÉ — avant il n'y avait pas de date check)
         if UserDefaults.standard.string(forKey: UDKey.catSocialDate) == today {
             categorySocial = UserDefaults.standard.integer(forKey: UDKey.catSocial)
+            if categorySocial > 0 { socialSource = "ud_standard" }
         } else {
             categorySocial = 0
         }
 
-        // weekAvg / monthAvg : pas de date check (moyennes stables sur plusieurs jours)
         profileWeekAvg = UserDefaults.standard.integer(forKey: UDKey.weekAvg)
         profileMonthAvg = UserDefaults.standard.integer(forKey: UDKey.monthAvg)
+        if profileWeekAvg > 0 { weekSource = "ud_standard" }
+        if profileMonthAvg > 0 { monthSource = "ud_standard" }
 
-        // === 2. Fallback: App Group UD (écrit par les extensions) ===
+        // === 2. Fallback: App Group UD (écrit par les extensions DAR/Monitor) ===
 
         if profileToday == 0 {
             let v = sharedUD?.integer(forKey: "shared_today") ?? 0
             let d = sharedUD?.string(forKey: "shared_today_date") ?? ""
-            if v > 0 && d == today { profileToday = v }
+            if v > 0 && d == today { profileToday = v; todaySource = "app_group" }
         }
         if categorySocial == 0 {
             let v = sharedUD?.integer(forKey: "shared_social") ?? 0
             let d = sharedUD?.string(forKey: "shared_social_date") ?? ""
-            if v > 0 && d == today { categorySocial = v }
+            if v > 0 && d == today { categorySocial = v; socialSource = "app_group" }
         }
-        if profileWeekAvg == 0 { profileWeekAvg = sharedUD?.integer(forKey: "shared_weekavg") ?? 0 }
-        if profileMonthAvg == 0 { profileMonthAvg = sharedUD?.integer(forKey: "shared_monthavg") ?? 0 }
+        if profileWeekAvg == 0 {
+            let v = sharedUD?.integer(forKey: "shared_weekavg") ?? 0
+            if v > 0 { profileWeekAvg = v; weekSource = "app_group" }
+        }
+        if profileMonthAvg == 0 {
+            let v = sharedUD?.integer(forKey: "shared_monthavg") ?? 0
+            if v > 0 { profileMonthAvg = v; monthSource = "app_group" }
+        }
         if trackedAppMinutes == 0 {
             let v = sharedUD?.integer(forKey: "shared_tracked") ?? 0
             let d = sharedUD?.string(forKey: "shared_tracked_date") ?? ""
             if v > 0 && d == today { trackedAppMinutes = v }
         }
 
-        // === 3. Fallback: Keychain (fonctionne même quand App Group est cassé) ===
+        // === 3. Fallback: Keychain ===
 
         if profileToday == 0 {
             let v = keychainInt("shared_today")
             let d = keychainRead("shared_today_date") ?? ""
-            if v > 0 && d == today { profileToday = v }
+            if v > 0 && d == today { profileToday = v; todaySource = "keychain" }
         }
         if categorySocial == 0 {
             let v = keychainInt("shared_social")
             let d = keychainRead("shared_social_date") ?? ""
-            if v > 0 && d == today { categorySocial = v }
+            if v > 0 && d == today { categorySocial = v; socialSource = "keychain" }
         }
-        if profileWeekAvg == 0 { profileWeekAvg = keychainInt("shared_weekavg") }
-        if profileMonthAvg == 0 { profileMonthAvg = keychainInt("shared_monthavg") }
+        if profileWeekAvg == 0 {
+            let v = keychainInt("shared_weekavg")
+            if v > 0 { profileWeekAvg = v; weekSource = "keychain" }
+        }
+        if profileMonthAvg == 0 {
+            let v = keychainInt("shared_monthavg")
+            if v > 0 { profileMonthAvg = v; monthSource = "keychain" }
+        }
 
-        print("[PAKT loadProfileCache] today=\(profileToday) social=\(categorySocial) weekAvg=\(profileWeekAvg) monthAvg=\(profileMonthAvg)")
+        let darDebug = keychainRead("dar_debug") ?? "never"
+        print("[PAKT loadProfileCache] today=\(profileToday)(\(todaySource)) social=\(categorySocial)(\(socialSource)) weekAvg=\(profileWeekAvg)(\(weekSource)) monthAvg=\(profileMonthAvg)(\(monthSource)) | DAR=\(darDebug)")
 
         // Si on a récupéré des données via fallback, les sauver dans le cache standard + sync
         if profileToday > 0 && UserDefaults.standard.string(forKey: UDKey.todayDate) != today {
@@ -251,20 +294,34 @@ final class ScreenTimeManager: ObservableObject {
 
     // MARK: - Authorization
 
+    @Published var authError: String? = nil
+    @Published var pendingAuthRequest: Bool = false
+
+    @MainActor
     func requestAuthorization() async {
-        print("[PAKT Auth] Current status: \(center.authorizationStatus.rawValue)")
+        let rawStatus = center.authorizationStatus.rawValue
+        print("[PAKT Auth] Current status: \(rawStatus)")
+        authError = nil
+
+        // Si déjà approuvé, juste rafraîchir
+        if center.authorizationStatus == .approved {
+            self.isAuthorized = true
+            self.startBackgroundMonitoring()
+            print("[PAKT Auth] Already approved — monitoring started")
+            return
+        }
+
         do {
+            // DOIT être sur le main thread pour que le dialogue système s'affiche
             try await center.requestAuthorization(for: .individual)
-            await MainActor.run {
-                self.isAuthorized = true
-                print("[PAKT Auth] Authorized!")
-                self.startBackgroundMonitoring()
-            }
+            self.isAuthorized = true
+            self.authError = nil
+            print("[PAKT Auth] Authorized!")
+            self.startBackgroundMonitoring()
         } catch {
             print("[PAKT Auth] Failed: \(error)")
-            await MainActor.run {
-                self.isAuthorized = false
-            }
+            self.isAuthorized = false
+            self.authError = error.localizedDescription
         }
     }
 
@@ -506,7 +563,10 @@ final class ScreenTimeManager: ObservableObject {
                     // Le DAR WeekChart couvre les 7 derniers jours — ne pas écraser avec le backend
                     let sevenDaysAgo = df.string(from: cal.date(byAdding: .day, value: -7, to: Date()) ?? Date())
                     for (date, minutes) in myScores where minutes > 0 {
-                        if date >= sevenDaysAgo {
+                        if date == todayStr {
+                            // Aujourd'hui : JAMAIS backfill depuis le backend (peut venir d'un autre device)
+                            continue
+                        } else if date >= sevenDaysAgo {
                             // Jours récents : ne backfill QUE si aucune donnée locale (DAR pas encore passé)
                             if byDate[date] == nil || byDate[date] == 0 {
                                 byDate[date] = minutes
@@ -525,20 +585,13 @@ final class ScreenTimeManager: ObservableObject {
                     UserDefaults.standard.set(raw, forKey: UDKey.historyRaw)
                     self.rebuildHistory(from: raw)
 
-                    // profileToday : le DAR/Monitor local est la source de vérité
-                    let todayMins = byDate[todayStr] ?? 0
-                    if self.profileToday == 0 && todayMins > 0 {
-                        self.profileToday = todayMins
-                        UserDefaults.standard.set(todayMins, forKey: UDKey.todayMinutes)
-                        UserDefaults.standard.set(todayStr, forKey: UDKey.todayDate)
-                    }
+                    // profileToday : NE PAS backfill depuis le backend pour aujourd'hui
+                    // car les données pourraient venir d'un autre appareil.
+                    // Seules les sources locales (DAR, Monitor) sont fiables pour "today".
+                    // Le local est déjà dans self.profileToday via loadProfileCache().
 
-                    // categorySocial : idem, local prioritaire
-                    let todaySocial = socialScores[todayStr] ?? 0
-                    if self.categorySocial == 0 && todaySocial > 0 {
-                        self.categorySocial = todaySocial
-                        UserDefaults.standard.set(todaySocial, forKey: UDKey.catSocial)
-                    }
+                    // categorySocial : idem, pas de backfill backend pour aujourd'hui
+                    // (le social vient exclusivement du DAR CategoriesScene)
 
                     // weekAvg et monthAvg : les DARs Apple sont prioritaires
                     // Backfill depuis le backend UNIQUEMENT si les DARs n'ont pas fourni de valeur

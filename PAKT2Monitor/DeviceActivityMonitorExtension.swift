@@ -75,6 +75,10 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
         // Sync to backend
         syncToBackend(minutes: minutes, date: todayDateString)
+
+        // Réveiller l'app principale via Darwin notification
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        CFNotificationCenterPostNotification(center, CFNotificationName("com.PAKT2.screenTimeUpdate" as CFString), nil, nil, true)
     }
 
     // MARK: - Backend REST sync

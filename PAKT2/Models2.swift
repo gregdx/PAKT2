@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import Combine
 
 // MARK: - AppUser
 
@@ -258,30 +259,124 @@ struct Group: Identifiable {
 // MARK: - App Definitions (for per-app tracking)
 
 struct AppDef: Identifiable {
-    let id: String      // keyword used for matching (e.g. "instagram")
-    let name: String    // display name
-    let letter: String  // letter shown in icon
-    let color: Color    // brand color
+    let id: String        // keyword used for matching (e.g. "instagram")
+    let name: String      // display name
+    let letter: String    // fallback letter shown in icon
+    let color: Color      // brand color (fallback background)
+    let bundleId: String  // iOS bundle ID for iTunes icon lookup
 
     static let all: [AppDef] = [
-        AppDef(id: "instagram",  name: "Instagram",  letter: "I",  color: Color(red: 0.88, green: 0.19, blue: 0.42)),
-        AppDef(id: "tiktok",     name: "TikTok",     letter: "T",  color: Color(red: 0.0,  green: 0.0,  blue: 0.0)),
-        AppDef(id: "snapchat",   name: "Snapchat",   letter: "S",  color: Color(red: 1.0,  green: 0.98, blue: 0.0)),
-        AppDef(id: "twitter",    name: "X",           letter: "X",  color: Color(red: 0.0,  green: 0.0,  blue: 0.0)),
-        AppDef(id: "facebook",   name: "Facebook",    letter: "f",  color: Color(red: 0.23, green: 0.35, blue: 0.60)),
-        AppDef(id: "messenger",  name: "Messenger",   letter: "M",  color: Color(red: 0.0,  green: 0.47, blue: 1.0)),
-        AppDef(id: "whatsapp",   name: "WhatsApp",    letter: "W",  color: Color(red: 0.15, green: 0.68, blue: 0.38)),
-        AppDef(id: "telegram",   name: "Telegram",    letter: "T",  color: Color(red: 0.16, green: 0.57, blue: 0.87)),
-        AppDef(id: "discord",    name: "Discord",     letter: "D",  color: Color(red: 0.35, green: 0.40, blue: 0.95)),
-        AppDef(id: "reddit",     name: "Reddit",      letter: "R",  color: Color(red: 1.0,  green: 0.27, blue: 0.0)),
-        AppDef(id: "threads",    name: "Threads",     letter: "@",  color: Color(red: 0.0,  green: 0.0,  blue: 0.0)),
-        AppDef(id: "linkedin",   name: "LinkedIn",    letter: "in", color: Color(red: 0.0,  green: 0.47, blue: 0.71)),
-        AppDef(id: "bereal",     name: "BeReal",      letter: "B",  color: Color(red: 0.0,  green: 0.0,  blue: 0.0)),
-        AppDef(id: "pinterest",  name: "Pinterest",   letter: "P",  color: Color(red: 0.90, green: 0.12, blue: 0.17)),
-        AppDef(id: "youtube",    name: "YouTube",     letter: "Y",  color: Color(red: 1.0,  green: 0.0,  blue: 0.0)),
+        AppDef(id: "instagram",  name: "Instagram",  letter: "I",  color: Color(red: 0.88, green: 0.19, blue: 0.42), bundleId: "com.burbn.instagram"),
+        AppDef(id: "tiktok",     name: "TikTok",     letter: "T",  color: Color(red: 0.0,  green: 0.0,  blue: 0.0),  bundleId: "com.zhiliaoapp.musically"),
+        AppDef(id: "snapchat",   name: "Snapchat",   letter: "S",  color: Color(red: 1.0,  green: 0.98, blue: 0.0),  bundleId: "com.toyopagroup.picaboo"),
+        AppDef(id: "twitter",    name: "X",           letter: "X",  color: Color(red: 0.0,  green: 0.0,  blue: 0.0),  bundleId: "com.atebits.Tweetie2"),
+        AppDef(id: "facebook",   name: "Facebook",    letter: "f",  color: Color(red: 0.23, green: 0.35, blue: 0.60), bundleId: "com.facebook.Facebook"),
+        AppDef(id: "messenger",  name: "Messenger",   letter: "M",  color: Color(red: 0.0,  green: 0.47, blue: 1.0),  bundleId: "com.facebook.Messenger"),
+        AppDef(id: "whatsapp",   name: "WhatsApp",    letter: "W",  color: Color(red: 0.15, green: 0.68, blue: 0.38), bundleId: "net.whatsapp.WhatsApp"),
+        AppDef(id: "telegram",   name: "Telegram",    letter: "T",  color: Color(red: 0.16, green: 0.57, blue: 0.87), bundleId: "ph.telegra.Telegraph"),
+        AppDef(id: "discord",    name: "Discord",     letter: "D",  color: Color(red: 0.35, green: 0.40, blue: 0.95), bundleId: "com.hammerandchisel.discord"),
+        AppDef(id: "reddit",     name: "Reddit",      letter: "R",  color: Color(red: 1.0,  green: 0.27, blue: 0.0),  bundleId: "com.reddit.Reddit"),
+        AppDef(id: "threads",    name: "Threads",     letter: "@",  color: Color(red: 0.0,  green: 0.0,  blue: 0.0),  bundleId: "com.burbn.barcelona"),
+        AppDef(id: "linkedin",   name: "LinkedIn",    letter: "in", color: Color(red: 0.0,  green: 0.47, blue: 0.71), bundleId: "com.linkedin.LinkedIn"),
+        AppDef(id: "bereal",     name: "BeReal",      letter: "B",  color: Color(red: 0.0,  green: 0.0,  blue: 0.0),  bundleId: "AlexisBarrworeyat.BeReal-Photos-Amis"),
+        AppDef(id: "pinterest",  name: "Pinterest",   letter: "P",  color: Color(red: 0.90, green: 0.12, blue: 0.17), bundleId: "pinterest"),
+        AppDef(id: "youtube",    name: "YouTube",     letter: "Y",  color: Color(red: 1.0,  green: 0.0,  blue: 0.0),  bundleId: "com.google.ios.youtube"),
     ]
 
     static func find(_ id: String) -> AppDef? { all.first { $0.id == id } }
+}
+
+// MARK: - App Icon Cache (iTunes API)
+
+final class AppIconCache: ObservableObject {
+    static let shared = AppIconCache()
+    @Published var icons: [String: UIImage] = [:]  // appId → icon
+    private var loadingIds: Set<String> = []
+    private let cacheDir: URL? = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("app_icons")
+
+    init() {
+        // Créer le dossier cache
+        if let dir = cacheDir { try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }
+        // Charger les icônes disque en mémoire
+        for app in AppDef.all {
+            if let img = loadFromDisk(app.id) { icons[app.id] = img }
+        }
+    }
+
+    func preloadAll() {
+        for app in AppDef.all where icons[app.id] == nil {
+            fetchIcon(for: app)
+        }
+    }
+
+    func fetchIcon(for app: AppDef) {
+        guard icons[app.id] == nil, !loadingIds.contains(app.id) else { return }
+        loadingIds.insert(app.id)
+
+        let urlStr = "https://itunes.apple.com/lookup?bundleId=\(app.bundleId)&country=US"
+        guard let url = URL(string: urlStr) else { return }
+
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data, let self else { return }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let results = json["results"] as? [[String: Any]],
+                  let first = results.first,
+                  let iconURL = first["artworkUrl512"] as? String ?? first["artworkUrl100"] as? String,
+                  let imgURL = URL(string: iconURL) else {
+                DispatchQueue.main.async { self.loadingIds.remove(app.id) }
+                return
+            }
+
+            URLSession.shared.dataTask(with: imgURL) { imgData, _, _ in
+                guard let imgData, let img = UIImage(data: imgData) else { return }
+                self.saveToDisk(app.id, data: imgData)
+                DispatchQueue.main.async {
+                    self.icons[app.id] = img
+                    self.loadingIds.remove(app.id)
+                }
+            }.resume()
+        }.resume()
+    }
+
+    private func saveToDisk(_ id: String, data: Data) {
+        guard let dir = cacheDir else { return }
+        try? data.write(to: dir.appendingPathComponent("\(id).png"))
+    }
+
+    private func loadFromDisk(_ id: String) -> UIImage? {
+        guard let dir = cacheDir,
+              let data = try? Data(contentsOf: dir.appendingPathComponent("\(id).png")) else { return nil }
+        return UIImage(data: data)
+    }
+}
+
+// MARK: - App Icon View (reusable)
+
+struct AppIconView: View {
+    let app: AppDef
+    var size: CGFloat = 40
+    @ObservedObject private var cache = AppIconCache.shared
+
+    var body: some View {
+        if let img = cache.icons[app.id] {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.22))
+        } else {
+            // Fallback : lettre + couleur pendant le chargement
+            ZStack {
+                RoundedRectangle(cornerRadius: size * 0.22)
+                    .fill(app.color)
+                    .frame(width: size, height: size)
+                Text(app.letter)
+                    .font(.system(size: size * 0.45, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+            }
+            .onAppear { cache.fetchIcon(for: app) }
+        }
+    }
 }
 
 // MARK: - Formatters

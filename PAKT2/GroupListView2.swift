@@ -254,14 +254,7 @@ struct GroupCard: View {
                             HStack(spacing: 4) {
                                 ForEach(group.trackedApps.prefix(4), id: \.self) { appId in
                                     if let app = AppDef.find(appId) {
-                                        ZStack {
-                                            RoundedRectangle(cornerRadius: 5)
-                                                .fill(app.color)
-                                                .frame(width: 22, height: 22)
-                                            Text(app.letter)
-                                                .font(.system(size: 10, weight: .black, design: .rounded))
-                                                .foregroundColor(.white)
-                                        }
+                                        AppIconView(app: app, size: 22)
                                     }
                                 }
                                 if group.trackedApps.count > 4 {

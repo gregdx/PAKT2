@@ -90,6 +90,12 @@ private func writeHistoryToShared(_ raw: String) {
     keychainWrite(key: "shared_history", value: raw)
 }
 
+/// Poste une Darwin notification pour réveiller l'app principale immédiatement
+private func notifyMainApp() {
+    let center = CFNotificationCenterGetDarwinNotifyCenter()
+    CFNotificationCenterPostNotification(center, CFNotificationName("com.PAKT2.screenTimeUpdate" as CFString), nil, nil, true)
+}
+
 private func goalMinutes() -> Int {
     // Try keychain first, fallback to 180
     if let raw = keychainRead("pakt_socialGoal"), let v = Int(raw), v > 0 { return v }
@@ -185,10 +191,14 @@ struct TodayScene: DeviceActivityReportScene {
 
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> TodayInfo {
         let minutes = await extractMinutes(from: data)
+        // Debug : marquer que le DAR a tourné via Keychain (App Group container est null)
+        let ts = ISO8601DateFormatter().string(from: Date())
+        keychainWrite(key: "dar_debug", value: "today:\(minutes) at \(ts)")
         _ = writeToAppGroup(minutes: minutes)
         if minutes > 0 {
             writeToShared(key: "shared_today", value: minutes)
             syncToBackendREST(minutes: minutes)
+            notifyMainApp()
         }
         return TodayInfo(minutes: minutes, goal: goalMinutes())
     }
@@ -287,6 +297,10 @@ struct WeekAvgScene: DeviceActivityReportScene {
         let weekData = daily.filter { $0.key >= sevenDaysAgo && $0.value > 0 }
         let avg = weekData.isEmpty ? 0 : weekData.values.reduce(0, +) / weekData.count
         print("[PAKT WeekAvgScene] days=\(daily.count) weekDays=\(weekData.count) avg=\(avg)")
+        if avg > 0 {
+            writeToShared(key: "shared_weekavg", value: avg)
+            notifyMainApp()
+        }
         return avg
     }
 }
@@ -302,6 +316,10 @@ struct MonthAvgScene: DeviceActivityReportScene {
         let withData = daily.values.filter { $0 > 0 }
         let avg = withData.isEmpty ? 0 : withData.reduce(0, +) / withData.count
         print("[PAKT MonthAvgScene] days=\(daily.count) withData=\(withData.count) avg=\(avg)")
+        if avg > 0 {
+            writeToShared(key: "shared_monthavg", value: avg)
+            notifyMainApp()
+        }
         return avg
     }
 }
@@ -388,6 +406,7 @@ struct WeekChartScene: DeviceActivityReportScene {
 
         if !entries.isEmpty {
             writeHistoryToShared(param)
+            notifyMainApp()
         }
 
         return result
@@ -483,6 +502,7 @@ struct CategoriesScene: DeviceActivityReportScene {
         if socialMinutes > 0 {
             writeToShared(key: "shared_social", value: socialMinutes)
             syncToBackendREST(socialMinutes: socialMinutes)
+            notifyMainApp()
         }
         return socialMinutes
     }

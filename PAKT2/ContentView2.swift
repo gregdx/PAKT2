@@ -62,6 +62,13 @@ struct ContentView: View {
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 darRefreshID += 1
+                stManager.refreshAuthorizationStatus()
+                if stManager.isAuthorized {
+                    stManager.startBackgroundMonitoring()
+                } else {
+                    // Auth perdue (ex: l'utilisateur a touché aux réglages Temps d'écran)
+                    Task { await stManager.requestAuthorization() }
+                }
                 Task {
                     let ok = await AuthManager.shared.refreshTokens()
                     if ok {
@@ -145,6 +152,7 @@ struct ContentView: View {
         }
         .ignoresSafeArea(edges: .bottom)
         .onAppear {
+            AppIconCache.shared.preloadAll()
             print("[PAKT] stManager.isAuthorized = \(stManager.isAuthorized)")
             print("[PAKT] profileToday = \(stManager.profileToday)")
         }

@@ -275,22 +275,57 @@ struct SettingsView: View {
     var preferencesSection: some View {
         VStack(spacing: 0) {
             // Screen time status
-            settingsRow(
-                icon: "iphone",
-                label: L10n.t("screen_time_status"),
-                trailing: {
-                    AnyView(
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(stManager.isAuthorized ? Theme.green : Theme.red)
-                                .frame(width: 7, height: 7)
-                            Text(stManager.isAuthorized ? L10n.t("connected") : L10n.t("not_connected"))
-                                .font(.system(size: 13))
-                                .foregroundColor(Theme.textMuted)
-                        }
-                    )
+            Button {
+                if !stManager.isAuthorized {
+                    // D'abord essayer via le code, sinon ouvrir les réglages iOS
+                    stManager.pendingAuthRequest = true
+                    dismiss()
                 }
-            )
+            } label: {
+                settingsRow(
+                    icon: "iphone",
+                    label: L10n.t("screen_time_status"),
+                    trailing: {
+                        AnyView(
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(stManager.isAuthorized ? Theme.green : Theme.red)
+                                    .frame(width: 7, height: 7)
+                                Text(stManager.isAuthorized ? L10n.t("connected") : L10n.t("not_connected"))
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Theme.textMuted)
+                            }
+                        )
+                    }
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            if !stManager.isAuthorized {
+                Button {
+                    if let url = URL(string: "App-prefs:SCREEN_TIME") {
+                        openURL(url)
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 12))
+                        Text(L10n.t("open_screen_time_settings"))
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundColor(Theme.green)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                }
+            }
+
+            if let err = stManager.authError {
+                Text(err)
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.red)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+            }
 
             rowDivider
 
