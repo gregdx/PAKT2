@@ -61,6 +61,7 @@ final class ActivityManager: ObservableObject {
     static let shared = ActivityManager()
 
     @Published var messages: [ChatMessage] = []
+    @Published var readReceipts: [String: [APIClient.ChatReadReceipt]] = [:]  // groupId/peerId → receipts
 
     private let storageKey = "pakt_chat_messages"
     private var cancellables = Set<AnyCancellable>()
@@ -94,6 +95,8 @@ final class ActivityManager: ObservableObject {
                     fromId: ws.fromId,
                     fromName: resolvedName,
                     toId: ws.toId,
+                    groupId: ws.groupId,
+                    createdAt: ws.createdAt ?? Date(),
                     text: ws.text,
                     activityTitle: ws.activityTitle,
                     activityEmoji: ws.activityEmoji
@@ -109,6 +112,23 @@ final class ActivityManager: ObservableObject {
                 if let i = self.messages.firstIndex(where: { $0.id == ws.id }) {
                     self.messages[i].response = ws.response
                 }
+            }
+            .store(in: &cancellables)
+
+        WebSocketManager.shared.onChatRead
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] ws in
+                guard let self else { return }
+                let key = ws.groupId ?? ws.peerId ?? ""
+                guard !key.isEmpty else { return }
+                let receipt = APIClient.ChatReadReceipt(userId: ws.userId, userName: ws.userName ?? "", lastReadMessageId: ws.messageId)
+                var current = self.readReceipts[key] ?? []
+                if let i = current.firstIndex(where: { $0.userId == ws.userId }) {
+                    current[i] = receipt
+                } else {
+                    current.append(receipt)
+                }
+                self.readReceipts[key] = current
             }
             .store(in: &cancellables)
     }
@@ -219,22 +239,67 @@ final class ActivityManager: ObservableObject {
 
     func loadGroupMessages(_ groupId: String) {
         Task {
-            if let list: [ChatMessage] = try? await APIClient.shared.listGroupMessages(groupID: groupId) {
+            if let response = try? await APIClient.shared.listGroupMessages(groupID: groupId) {
                 await MainActor.run {
-                    for msg in list {
+                    for msg in response.messages {
                         if !self.messages.contains(where: { $0.id == msg.id }) {
                             self.messages.append(msg)
                         }
                     }
+                    self.readReceipts[groupId] = response.readReceipts
                 }
             }
         }
+    }
+
+    func markGroupRead(_ groupId: String) {
+        guard let lastMsg = messagesForGroup(groupId).last else { return }
+        // Update local immediately
+        let receipt = APIClient.ChatReadReceipt(userId: myUid, userName: AppState.shared.userName, lastReadMessageId: lastMsg.id)
+        var current = readReceipts[groupId] ?? []
+        if let i = current.firstIndex(where: { $0.userId == myUid }) {
+            current[i] = receipt
+        } else {
+            current.append(receipt)
+        }
+        readReceipts[groupId] = current
+        // Sync to backend
+        Task { try? await APIClient.shared.markRead(messageId: lastMsg.id, groupId: groupId) }
+    }
+
+    func markPeerRead(_ peerId: String) {
+        guard let lastMsg = messagesWithFriend(peerId).last else { return }
+        let receipt = APIClient.ChatReadReceipt(userId: myUid, userName: AppState.shared.userName, lastReadMessageId: lastMsg.id)
+        var current = readReceipts[peerId] ?? []
+        if let i = current.firstIndex(where: { $0.userId == myUid }) {
+            current[i] = receipt
+        } else {
+            current.append(receipt)
+        }
+        readReceipts[peerId] = current
+        Task { try? await APIClient.shared.markRead(messageId: lastMsg.id, peerId: peerId) }
+    }
+
+    /// Returns user IDs who have seen the last message in a group
+    func seenBy(groupId: String) -> [(userId: String, userName: String)] {
+        guard let lastMsg = messagesForGroup(groupId).last else { return [] }
+        let receipts = readReceipts[groupId] ?? []
+        return receipts
+            .filter { $0.lastReadMessageId == lastMsg.id && $0.userId != myUid }
+            .map { (userId: $0.userId, userName: $0.userName) }
+    }
+
+    /// Returns user IDs who have seen the last message in a direct conversation
+    func seenByPeer(_ peerId: String) -> Bool {
+        guard let lastMsg = messagesWithFriend(peerId).last, lastMsg.isFromMe else { return false }
+        let receipts = readReceipts[peerId] ?? []
+        return receipts.contains { $0.lastReadMessageId == lastMsg.id && $0.userId == peerId }
     }
 }
 
 // MARK: - Picked friend helper
 
-struct PickedFriend: Identifiable {
+struct PickedFriend: Identifiable, Hashable {
     let id = UUID()
     let uid: String
     let name: String
@@ -242,16 +307,21 @@ struct PickedFriend: Identifiable {
 
 // MARK: - Conversations list
 
+enum MessageTab: String, CaseIterable {
+    case groups = "Groups"
+    case friends = "Friends"
+}
+
 struct ActivitiesView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject private var manager = ActivityManager.shared
     @ObservedObject private var fm = FriendManager.shared
-    @State private var pickedFriend: PickedFriend? = nil
     @State private var showNewConversation = false
-    @State private var selectedGroupChat: UUID? = nil
+    @State private var selectedTab: MessageTab = .groups
+    @State private var navPath = NavigationPath()
 
     var body: some View {
-        NavigationView {
+        NavigationStack(path: $navPath) {
             ZStack {
                 Theme.bg.ignoresSafeArea()
 
@@ -273,92 +343,154 @@ struct ActivitiesView: View {
                         }
                         .padding(.horizontal, 24)
                         .padding(.top, 64)
-                        .padding(.bottom, 20)
+                        .padding(.bottom, 12)
 
-                        // Conversation cards
-                        conversationsList
+                        // Tab selector
+                        HStack(spacing: 0) {
+                            ForEach(MessageTab.allCases, id: \.self) { tab in
+                                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { selectedTab = tab } }) {
+                                    VStack(spacing: 8) {
+                                        Text(tab.rawValue)
+                                            .font(.system(size: 15, weight: selectedTab == tab ? .bold : .medium))
+                                            .foregroundColor(selectedTab == tab ? Theme.text : Theme.textMuted)
+                                        Rectangle()
+                                            .fill(selectedTab == tab ? Theme.text : Color.clear)
+                                            .frame(height: 2)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 16)
+
+                        // Content based on tab
+                        switch selectedTab {
+                        case .groups:
+                            groupsList
+                        case .friends:
+                            friendsList
+                        }
 
                         Spacer().frame(height: 100)
                     }
                 }
             }
             .navigationBarHidden(true)
-            .sheet(isPresented: $showNewConversation) { friendPickerSheet }
-            .fullScreenCover(item: $pickedFriend) { friend in
-                ConversationView(friendUid: friend.uid, friendName: friend.name, onClose: { pickedFriend = nil })
+            .navigationDestination(for: PickedFriend.self) { friend in
+                ConversationView(friendUid: friend.uid, friendName: friend.name, onClose: { navPath.removeLast() })
                     .environmentObject(appState)
+                    .navigationBarHidden(true)
             }
-            .sheet(isPresented: Binding(
-                get: { selectedGroupChat != nil },
-                set: { if !$0 { selectedGroupChat = nil } }
-            )) {
-                if let gid = selectedGroupChat, let group = appState.groups.first(where: { $0.id == gid }) {
-                    GroupChatView(group: group)
-                        .environmentObject(appState)
-                }
+            .navigationDestination(for: Group.self) { group in
+                GroupChatView(group: group)
+                    .environmentObject(appState)
+                    .navigationBarHidden(true)
             }
+            .sheet(isPresented: $showNewConversation) { friendPickerSheet }
             .onAppear { manager.load() }
         }
-        .navigationViewStyle(.stack)
     }
 
-    // MARK: - Conversations list content
+    // MARK: - Groups tab
 
-    private var conversationsList: some View {
+    private var groupsList: some View {
+        let sortedGroups = appState.groups.filter { $0.isActive }.sorted { g1, g2 in
+            let last1 = manager.messagesForGroup(g1.id.uuidString).last?.createdAt ?? .distantPast
+            let last2 = manager.messagesForGroup(g2.id.uuidString).last?.createdAt ?? .distantPast
+            return last1 > last2
+        }
+
+        return VStack(spacing: 8) {
+            if sortedGroups.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "person.3")
+                        .font(.system(size: 32))
+                        .foregroundColor(Theme.textFaint)
+                    Text(L10n.t("no_challenges"))
+                        .font(.system(size: 15))
+                        .foregroundColor(Theme.textMuted)
+                }
+                .padding(.top, 60)
+            } else {
+                ForEach(sortedGroups) { group in
+                    Button(action: { navPath.append(group) }) {
+                        groupChatCard(group)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func groupChatCard(_ group: Group) -> some View {
+        let lastMsg = manager.messagesForGroup(group.id.uuidString).last
+
+        return HStack(spacing: 14) {
+            // Stacked avatars
+            ZStack {
+                ForEach(Array(group.members.prefix(3).enumerated()), id: \.offset) { i, m in
+                    AvatarView(name: m.name, size: 32, color: Theme.textMuted,
+                               uid: m.uid, isMe: appState.isMe(m))
+                        .environmentObject(appState)
+                        .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
+                        .offset(x: CGFloat(i) * 10)
+                }
+            }
+            .frame(width: 48 + CGFloat(min(group.members.count - 1, 2)) * 10, height: 48, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(group.name)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.text)
+                if let last = lastMsg, let text = last.text {
+                    Text("\(last.isFromMe ? "You" : last.fromName): \(text)")
+                        .font(.system(size: 14))
+                        .foregroundColor(Theme.textMuted)
+                        .lineLimit(1)
+                } else {
+                    Text("\(group.members.count) members")
+                        .font(.system(size: 14))
+                        .foregroundColor(Theme.textMuted)
+                }
+            }
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 6) {
+                if let last = lastMsg {
+                    Text(timeAgo(last.createdAt))
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.textFaint)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.textFaint)
+            }
+        }
+        .padding(14)
+        .liquidGlass(cornerRadius: 16)
+    }
+
+    // MARK: - Friends tab
+
+    private var friendsList: some View {
         let convUids = manager.conversationUids()
         let otherFriends = fm.friends.filter { f in !convUids.contains(f.id) }
 
         return VStack(spacing: 0) {
             if fm.friends.isEmpty {
                 VStack(spacing: 12) {
+                    Image(systemName: "person.2")
+                        .font(.system(size: 32))
+                        .foregroundColor(Theme.textFaint)
                     Text(L10n.t("no_friends_yet"))
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Theme.text)
-                        .padding(.top, 60)
+                        .font(.system(size: 15))
+                        .foregroundColor(Theme.textMuted)
                 }
+                .padding(.top, 60)
             } else {
-                // Group chats
-                if !appState.groups.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(appState.groups.filter { $0.isActive }) { group in
-                            Button(action: { selectedGroupChat = group.id }) {
-                                HStack(spacing: 14) {
-                                    // Stacked avatars
-                                    ZStack {
-                                        ForEach(Array(group.members.prefix(3).enumerated()), id: \.offset) { i, m in
-                                            AvatarView(name: m.name, size: 32, color: Theme.textMuted,
-                                                       uid: m.uid, isMe: appState.isMe(m))
-                                                .environmentObject(appState)
-                                                .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
-                                                .offset(x: CGFloat(i) * 10)
-                                        }
-                                    }
-                                    .frame(width: 48 + CGFloat(min(group.members.count - 1, 2)) * 10, height: 48, alignment: .leading)
-
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(group.name)
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundColor(Theme.text)
-                                        Text("\(group.members.count) members")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(Theme.textMuted)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(Theme.textFaint)
-                                }
-                                .padding(14)
-                                .liquidGlass(cornerRadius: 16)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-                }
-
-                // Direct conversations
+                // Active conversations (sorted by most recent)
                 VStack(spacing: 8) {
                     ForEach(convUids, id: \.self) { uid in
                         conversationCard(uid: uid)
@@ -377,7 +509,7 @@ struct ActivitiesView: View {
                             HStack(spacing: 16) {
                                 ForEach(otherFriends) { friend in
                                     Button(action: {
-                                        pickedFriend = PickedFriend(uid: friend.id, name: friend.firstName)
+                                        navPath.append(PickedFriend(uid: friend.id, name: friend.firstName))
                                     }) {
                                         VStack(spacing: 8) {
                                             AvatarView(name: friend.firstName, size: 52, color: Theme.textMuted,
@@ -409,13 +541,11 @@ struct ActivitiesView: View {
         let last = manager.lastMessage(with: uid)
         let unread = manager.unreadCount(for: uid)
 
-        return Button(action: { pickedFriend = PickedFriend(uid: uid, name: name) }) {
+        return Button(action: { navPath.append(PickedFriend(uid: uid, name: name)) }) {
             HStack(spacing: 14) {
-                // Avatar
                 AvatarView(name: name, size: 48, color: Theme.textMuted, uid: uid, isMe: false)
                     .environmentObject(appState)
 
-                // Name + last message
                 VStack(alignment: .leading, spacing: 4) {
                     Text(name)
                         .font(.system(size: 16, weight: unread > 0 ? .bold : .semibold))
@@ -445,11 +575,10 @@ struct ActivitiesView: View {
 
                 Spacer()
 
-                // Timestamp + unread
                 VStack(alignment: .trailing, spacing: 6) {
                     if let last {
                         Text(timeAgo(last.createdAt))
-                            .font(.system(size: 12, weight: .regular))
+                            .font(.system(size: 12))
                             .foregroundColor(Theme.textFaint)
                     }
                     if unread > 0 {
@@ -490,7 +619,7 @@ struct ActivitiesView: View {
                             Button(action: {
                                 showNewConversation = false
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                                    pickedFriend = PickedFriend(uid: friend.id, name: friend.firstName)
+                                    navPath.append(PickedFriend(uid: friend.id, name: friend.firstName))
                                 }
                             }) {
                                 HStack(spacing: 14) {

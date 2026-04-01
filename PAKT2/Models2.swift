@@ -200,7 +200,9 @@ struct Member: Identifiable {
 
 // MARK: - Group
 
-struct Group: Identifiable {
+struct Group: Identifiable, Hashable {
+    static func == (lhs: Group, rhs: Group) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
     var id          : UUID = UUID()
     var name        : String
     var code        : String

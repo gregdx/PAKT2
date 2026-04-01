@@ -52,6 +52,7 @@ struct WSChatMessage: Decodable {
     let fromId: String
     let fromName: String?
     let toId: String
+    let groupId: String?
     let text: String?
     let activityTitle: String?
     let activityEmoji: String?
@@ -64,6 +65,14 @@ struct WSChatResponse: Decodable {
     let fromId: String
     let fromName: String?
     let response: String
+}
+
+struct WSChatRead: Decodable {
+    let userId: String
+    let userName: String?
+    let groupId: String?
+    let peerId: String?
+    let messageId: String
 }
 
 // MARK: - WebSocketManager
@@ -81,6 +90,7 @@ class WebSocketManager: ObservableObject {
     let onPendingScore = PassthroughSubject<WSPendingScore, Never>()
     let onChatMessage = PassthroughSubject<WSChatMessage, Never>()
     let onChatResponse = PassthroughSubject<WSChatResponse, Never>()
+    let onChatRead = PassthroughSubject<WSChatRead, Never>()
 
     @Published var isConnected = false
 
@@ -278,6 +288,11 @@ class WebSocketManager: ObservableObject {
         case "chat_response":
             if let payload = try? decoder.decode(WSPayload<WSChatResponse>.self, from: data) {
                 DispatchQueue.main.async { self.onChatResponse.send(payload.data) }
+            }
+
+        case "chat_read":
+            if let payload = try? decoder.decode(WSPayload<WSChatRead>.self, from: data) {
+                DispatchQueue.main.async { self.onChatRead.send(payload.data) }
             }
 
         default:

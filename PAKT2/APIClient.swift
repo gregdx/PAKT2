@@ -504,13 +504,29 @@ class APIClient {
 
     // MARK: - Group Chat
 
-    func listGroupMessages(groupID: String) async throws -> [ChatMessage] {
+    struct GroupChatResponse: Decodable {
+        let messages: [ChatMessage]
+        let readReceipts: [ChatReadReceipt]
+    }
+
+    struct ChatReadReceipt: Decodable {
+        let userId: String
+        let userName: String
+        let lastReadMessageId: String
+    }
+
+    func listGroupMessages(groupID: String) async throws -> GroupChatResponse {
         try await request(.GET, "/groupchat/\(groupID)")
     }
 
     func sendGroupMessage(groupID: String, text: String) async throws {
         struct Body: Encodable { let text: String }
         let _: EmptyResponse = try await request(.POST, "/groupchat/\(groupID)", body: Body(text: text))
+    }
+
+    func markRead(messageId: String, groupId: String? = nil, peerId: String? = nil) async throws {
+        struct Body: Encodable { let messageId: String; let groupId: String?; let peerId: String? }
+        let _: EmptyResponse = try await request(.POST, "/chat/read", body: Body(messageId: messageId, groupId: groupId, peerId: peerId))
     }
 }
 

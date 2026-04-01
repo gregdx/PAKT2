@@ -350,6 +350,7 @@ struct AvatarView: View {
     var isMe  : Bool   = false
     @EnvironmentObject var appState: AppState
     @State private var remotePhoto: UIImage? = nil
+    @State private var didFetch = false
 
     var body: some View {
         ZStack {
@@ -366,21 +367,33 @@ struct AvatarView: View {
                     .foregroundColor(color)
             }
         }
-        .onAppear {
-            guard !isMe, !uid.isEmpty, remotePhoto == nil else { return }
-            // Check cache first
-            if let cached = cachedPhoto(for: uid) {
-                remotePhoto = cached
-                return
-            }
-            // Don't fetch if already fetching
-            guard !isPhotoFetching(uid) else { return }
-            markPhotoFetching(uid)
-            Task {
-                if let img = await AuthManager.shared.fetchProfilePhoto(uid: uid) {
-                    cachePhoto(img, for: uid)
-                    await MainActor.run { remotePhoto = img }
-                }
+        .onAppear { loadPhoto() }
+        .onChange(of: uid) { _ in
+            remotePhoto = nil
+            didFetch = false
+            loadPhoto()
+        }
+    }
+
+    private func loadPhoto() {
+        guard !isMe, !uid.isEmpty else { return }
+        // Always check cache first (photo may have been fetched by another AvatarView)
+        if let cached = cachedPhoto(for: uid) {
+            if remotePhoto == nil { remotePhoto = cached }
+            return
+        }
+        guard !didFetch, !isPhotoFetching(uid) else { return }
+        didFetch = true
+        markPhotoFetching(uid)
+        Task {
+            if let img = await AuthManager.shared.fetchProfilePhoto(uid: uid) {
+                cachePhoto(img, for: uid)
+                await MainActor.run { remotePhoto = img }
+            } else {
+                // Mark as done even on failure to avoid infinite retries
+                _photoCacheLock.lock()
+                _photoFetching.remove(uid)
+                _photoCacheLock.unlock()
             }
         }
     }

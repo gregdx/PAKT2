@@ -7,6 +7,7 @@ struct GroupChatView: View {
     @ObservedObject private var manager = ActivityManager.shared
     @State private var textInput = ""
     @FocusState private var isTextFocused: Bool
+    @GestureState private var dragOffset: CGFloat = 0
 
     var groupId: String { group.id.uuidString }
     var myUid: String { manager.myUid }
@@ -57,6 +58,22 @@ struct GroupChatView: View {
                         ForEach(chatMessages) { msg in
                             groupMessageBubble(msg).id(msg.id)
                         }
+                        // Read receipts — small avatars of people who have seen the last message
+                        let seen = manager.seenBy(groupId: groupId)
+                        if !seen.isEmpty {
+                            HStack(spacing: -4) {
+                                Spacer()
+                                ForEach(seen, id: \.userId) { s in
+                                    AvatarView(name: s.userName, size: 16, color: Theme.textMuted,
+                                               uid: s.userId, isMe: false)
+                                        .environmentObject(appState)
+                                        .overlay(Circle().stroke(Theme.bg, lineWidth: 1))
+                                }
+                            }
+                            .padding(.trailing, 16)
+                            .padding(.top, -4)
+                        }
+
                         if chatMessages.isEmpty {
                             VStack(spacing: 12) {
                                 Image(systemName: "bubble.left.and.bubble.right")
@@ -110,6 +127,10 @@ struct GroupChatView: View {
         .background(Theme.bg)
         .onAppear {
             manager.loadGroupMessages(groupId)
+            manager.markGroupRead(groupId)
+        }
+        .onChange(of: chatMessages.count) { _ in
+            manager.markGroupRead(groupId)
         }
     }
 
