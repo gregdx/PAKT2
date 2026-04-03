@@ -1080,7 +1080,7 @@ struct ConversationView: View {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 0) {
                         // Space for floating header
-                        Spacer().frame(height: 100)
+                        Spacer().frame(height: 70)
 
                         ForEach(Array(chatMessages.enumerated()), id: \.element.id) { index, msg in
                             VStack(spacing: 0) {
@@ -1254,7 +1254,7 @@ struct ConversationView: View {
         }
         .buttonStyle(PlainButtonStyle())
         .padding(.horizontal, 16)
-        .padding(.top, 48)
+        .padding(.top, 10)
         .padding(.bottom, 6)
     }
 
