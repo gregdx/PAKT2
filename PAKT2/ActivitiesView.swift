@@ -1405,14 +1405,10 @@ struct ConversationView: View {
         return VStack(spacing: 0) {
             // Venue photo if it's a spot
             if let venue {
-                AsyncImage(url: URL(string: venue.photoURL)) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFill()
-                    default:
-                        LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
-                            .overlay(Image(systemName: venue.icon).font(.system(size: 30)).foregroundColor(.white.opacity(0.2)))
-                    }
+                ZStack {
+                    LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .overlay(Image(systemName: venue.icon).font(.system(size: 30)).foregroundColor(.white.opacity(0.2)))
+                    CachedAsyncImage(url: URL(string: venue.photoURL)).scaledToFill()
                 }
                 .frame(height: 120)
                 .clipped()
@@ -1616,14 +1612,10 @@ struct ActivityPickerSheet: View {
                 }) {
                     HStack(spacing: 12) {
                         // Mini photo
-                        AsyncImage(url: URL(string: venue.photoURL)) { phase in
-                            switch phase {
-                            case .success(let img):
-                                img.resizable().scaledToFill()
-                            default:
-                                LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
-                                    .overlay(Image(systemName: venue.icon).font(.system(size: 14)).foregroundColor(.white.opacity(0.4)))
-                            }
+                        ZStack {
+                            LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+                                .overlay(Image(systemName: venue.icon).font(.system(size: 14)).foregroundColor(.white.opacity(0.4)))
+                            CachedAsyncImage(url: URL(string: venue.photoURL)).scaledToFill()
                         }
                         .frame(width: 48, height: 48)
                         .clipShape(RoundedRectangle(cornerRadius: 12))

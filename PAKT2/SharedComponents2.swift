@@ -96,6 +96,38 @@ enum Log {
     static func e(_ message: String) { logger.error("\(message, privacy: .public)") }
 }
 
+// MARK: - Cached Async Image
+
+private let _venueImageCache = NSCache<NSString, UIImage>()
+
+struct CachedAsyncImage: View {
+    let url: URL?
+    @State private var image: UIImage? = nil
+
+    var body: some View {
+        if let image {
+            Image(uiImage: image).resizable()
+        } else {
+            Color.clear.onAppear { loadImage() }
+        }
+    }
+
+    private func loadImage() {
+        guard let url else { return }
+        let key = url.absoluteString as NSString
+        if let cached = _venueImageCache.object(forKey: key) {
+            image = cached
+            return
+        }
+        Task {
+            guard let (data, _) = try? await URLSession.shared.data(from: url),
+                  let img = UIImage(data: data) else { return }
+            _venueImageCache.setObject(img, forKey: key)
+            await MainActor.run { image = img }
+        }
+    }
+}
+
 // MARK: - Constants
 
 /// 16 waking hours × 60 = 960 minutes
@@ -477,9 +509,11 @@ struct AvatarView: View {
         // Show cached photo immediately
         if let cached = cachedPhoto(for: uid) {
             if remotePhoto == nil { remotePhoto = cached }
+            // Don't re-fetch if we already have a cached version showing
+            guard shouldRevalidatePhoto(uid) else { return }
         }
-        // Revalidate from server if not already fetching and cache is stale
-        guard !isPhotoFetching(uid), shouldRevalidatePhoto(uid) else { return }
+        // Fetch from server if not already fetching and retry is allowed
+        guard !isPhotoFetching(uid), shouldRetryPhoto(uid) else { return }
         markPhotoFetching(uid)
         Task {
             if let img = await AuthManager.shared.fetchProfilePhoto(uid: uid) {

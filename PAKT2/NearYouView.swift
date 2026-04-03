@@ -395,18 +395,10 @@ struct NearYouView: View {
         VStack(spacing: 0) {
             // Photo
             ZStack(alignment: .bottomLeading) {
-                AsyncImage(url: URL(string: venue.photoURL)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    default:
-                        LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
-                            .overlay(
-                                Image(systemName: venue.icon)
-                                    .font(.system(size: 40, weight: .light))
-                                    .foregroundColor(.white.opacity(0.25))
-                            )
-                    }
+                ZStack {
+                    LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .overlay(Image(systemName: venue.icon).font(.system(size: 40, weight: .light)).foregroundColor(.white.opacity(0.25)))
+                    CachedAsyncImage(url: URL(string: venue.photoURL)).scaledToFill()
                 }
                 .frame(height: 160)
                 .clipped()
@@ -622,18 +614,10 @@ struct VenueDetailSheet: View {
                 VStack(spacing: 0) {
                     // Hero image
                     ZStack(alignment: .topLeading) {
-                        AsyncImage(url: URL(string: venue.photoURL)) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image.resizable().scaledToFill()
-                            default:
-                                LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
-                                    .overlay(
-                                        Image(systemName: venue.icon)
-                                            .font(.system(size: 60, weight: .light))
-                                            .foregroundColor(.white.opacity(0.2))
-                                    )
-                            }
+                        ZStack {
+                            LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+                                .overlay(Image(systemName: venue.icon).font(.system(size: 60, weight: .light)).foregroundColor(.white.opacity(0.2)))
+                            CachedAsyncImage(url: URL(string: venue.photoURL)).scaledToFill()
                         }
                         .frame(height: 240)
                         .clipped()
