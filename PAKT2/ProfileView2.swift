@@ -391,7 +391,7 @@ struct ProfileView: View {
 
         if withData.count >= 2 || today > 0 {
             let insight = computeInsight(data: withData, today: today, weekAvg: weekAvg)
-            if !insight.isEmpty {
+            if !insight.0.isEmpty {
                 HStack(spacing: 12) {
                     Text(insight.0)
                         .font(.system(size: 22))
