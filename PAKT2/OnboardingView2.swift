@@ -197,7 +197,7 @@ struct OnboardingView: View {
 
                         HStack(spacing: 12) {
                             Rectangle().fill(Theme.border).frame(height: 0.5)
-                            Text("or").font(.system(size: 14)).foregroundColor(Theme.textFaint)
+                            Text(L10n.t("or")).font(.system(size: 14)).foregroundColor(Theme.textFaint)
                             Rectangle().fill(Theme.border).frame(height: 0.5)
                         }
 

@@ -567,7 +567,7 @@ struct GroupDetailView: View {
                 }
 
                 // Goal line label
-                Text("goal: \(formatTime(group.goalMinutes))")
+                Text("\(L10n.t("goal")): \(formatTime(group.goalMinutes))")
                     .font(.system(size: 13))
                     .foregroundColor(Theme.textFaint)
             }
