@@ -286,10 +286,9 @@ struct GroupChatView: View {
                 }
                 Text(msg.text ?? "")
                     .font(.system(size: 15))
-                    .foregroundColor(isMine ? Theme.bg : Theme.text)
+                    .foregroundColor(Theme.text)
                     .padding(.horizontal, 14).padding(.vertical, 9)
-                    .background(isMine ? Theme.text : Theme.bgWarm)
-                    .clipShape(BubbleShape(isMine: isMine, isFirst: isFirst, isLast: isLast))
+                    .liquidGlass(cornerRadius: 18)
                     .contextMenu {
                         if let text = msg.text {
                             Button {
