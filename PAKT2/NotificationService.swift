@@ -29,12 +29,14 @@ class NotificationService: ObservableObject {
 
     func startListening() {
         cancellables.removeAll()
+        Log.d("[Notif] startListening — subscribing to WS events")
 
         // New chat message
         WebSocketManager.shared.onChatMessage
             .receive(on: DispatchQueue.main)
             .sink { [weak self] msg in
                 guard let self else { return }
+                Log.d("[Notif] chat_message from \(msg.fromId.prefix(8))")
                 guard msg.fromId != AppState.shared.currentUID else { return }
                 let name = msg.fromName ?? "Someone"
                 let body = msg.activityTitle ?? msg.text ?? L10n.t("sent")
@@ -121,6 +123,7 @@ class NotificationService: ObservableObject {
     // MARK: - Send local notification
 
     private func send(title: String, body: String, id: String) {
+        Log.d("[Notif] Sending: \(title) — \(body)")
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -128,7 +131,11 @@ class NotificationService: ObservableObject {
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
         let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                Log.e("[Notif] Failed to schedule: \(error.localizedDescription)")
+            }
+        }
     }
 
     // MARK: - Daily reminder

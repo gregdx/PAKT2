@@ -176,7 +176,10 @@ struct ContentView: View {
         .onAppear {
             AppIconCache.shared.preloadAll()
             startPeriodicSync()
-            Task { _ = await NotificationService.shared.requestPermission() }
+            Task {
+                let granted = await NotificationService.shared.requestPermission()
+                Log.d("[Notif] Permission granted: \(granted)")
+            }
 
             // Refresh token THEN start everything
             Task {
