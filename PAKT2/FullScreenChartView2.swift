@@ -72,7 +72,7 @@ struct FullScreenChartView: View {
                 Text(L10n.t("details"))
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundColor(Theme.text)
-                Text("goal · \(formatTime(goalMinutes)) / day")
+                Text("\(L10n.t("goal")) · \(formatTime(goalMinutes))\(L10n.t("per_day"))")
                     .font(.system(size: 15))
                     .foregroundColor(Theme.textFaint)
             }
@@ -253,12 +253,12 @@ struct FullScreenChartView: View {
                     .font(.system(size: 13))
                     .foregroundColor(Theme.textFaint)
                 if days > 0 {
-                    Text("\(days) days/year")
+                    Text("\(days) \(L10n.t("full_days_year"))")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(Theme.textMuted)
                 }
                 if total > 0 {
-                    Text("\(daysOk)/\(total) under goal")
+                    Text("\(daysOk)/\(total) \(L10n.t("days_under"))")
                         .font(.system(size: 13))
                         .foregroundColor(daysOk == total ? Theme.green : Theme.textFaint)
                 }
@@ -271,6 +271,8 @@ struct FullScreenChartView: View {
                 .foregroundColor(Theme.textMuted)
         }
         .padding(.vertical, 8)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(name): \(pct)% \(L10n.t("pct_waking")), \(formatTime(avg)) \(L10n.t("avg_per_day"))")
     }
 
     // MARK: - Race Section
@@ -376,7 +378,7 @@ struct FullScreenChartView: View {
                             Text("+\(formatTime(mins - goalMinutes))")
                                 .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(Theme.red)
-                            Text("over goal")
+                            Text(L10n.t("over_goal_label"))
                                 .font(.system(size: 13))
                                 .foregroundColor(Theme.textFaint)
                         }
@@ -404,7 +406,7 @@ struct FullScreenChartView: View {
                     }
                     .frame(height: 24)
 
-                    Text("that's \(daysPerYear(mins)) full days per year at this pace")
+                    Text("\(daysPerYear(mins)) \(L10n.t("days_wasted"))")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(Theme.red)
                         .frame(maxWidth: .infinity, alignment: .leading)

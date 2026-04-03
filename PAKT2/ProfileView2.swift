@@ -376,6 +376,8 @@ struct ProfileView: View {
         .liquidGlass(cornerRadius: 16)
         .padding(.horizontal, 24)
         .padding(.top, 20)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(data.filter { $0.minutes > 0 }.map { "\($0.label): \(formatTime($0.minutes))" }.joined(separator: ", "))
     }
 
     // MARK: - Insight card

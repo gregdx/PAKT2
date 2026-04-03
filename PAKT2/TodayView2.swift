@@ -133,6 +133,7 @@ struct TodayView: View {
                     }
                 }
         }
+        .accessibilityLabel(label)
     }
 
     // MARK: - Activity card
@@ -165,6 +166,8 @@ struct TodayView: View {
         }
         .padding(16)
         .liquidGlass(cornerRadius: 16)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(activity.emoji) \(activity.title). \(activity.subtitle)")
     }
 }
 

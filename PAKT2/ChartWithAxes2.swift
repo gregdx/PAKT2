@@ -157,6 +157,14 @@ struct ChartWithAxes: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Theme.border, lineWidth: 0.5)
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(chartAccessibilityLabel)
+    }
+
+    private var chartAccessibilityLabel: String {
+        guard let first = histories.first, !first.isEmpty else { return L10n.t("no_data_yet") }
+        let pairs = zip(xLabels, first).map { "\($0): \(formatTime($1))" }
+        return "\(L10n.t("goal")) \(formatTime(goalMinutes)). " + pairs.joined(separator: ", ")
     }
 }
 
