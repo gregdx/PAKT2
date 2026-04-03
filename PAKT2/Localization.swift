@@ -199,7 +199,7 @@ enum L10n {
         "cat_social":           "social",
 
         // Activities
-        "activities_title":     "Activities",
+        "activities_title":     "Messages",
         "activities_subtitle":  "Find a mate to stop scrolling",
         "tab_friends":          "Friends",
         "tab_near_you":         "Near you",
