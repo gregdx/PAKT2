@@ -222,7 +222,7 @@ struct ChallengeResultView: View {
                 Spacer()
 
                 SlideAppearWrapper(delay: 0.1) {
-                    Text("THE WINNER")
+                    Text(L10n.t("the_winner"))
                         .font(.system(size: 14, weight: .heavy))
                         .foregroundColor(Theme.green)
                         .tracking(4)
@@ -256,7 +256,7 @@ struct ChallengeResultView: View {
                             .foregroundColor(Theme.green)
                             .padding(.top, 8)
 
-                        Text("average per day")
+                        Text(L10n.t("avg_per_day"))
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.white.opacity(0.5))
                             .padding(.top, 4)
@@ -275,7 +275,7 @@ struct ChallengeResultView: View {
                 }
 
                 SlideAppearWrapper(delay: 0.3) {
-                    Text(isSuccess ? "GOAL\nREACHED" : "GOAL\nNOT REACHED")
+                    Text(L10n.t(isSuccess ? "goal_reached_title" : "goal_not_reached_title"))
                         .font(.system(size: 44, weight: .black))
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
@@ -284,7 +284,7 @@ struct ChallengeResultView: View {
                 }
 
                 SlideAppearWrapper(delay: 0.5) {
-                    Text(isSuccess ? "Your group crushed it." : "Better luck next time.")
+                    Text(L10n.t(isSuccess ? "group_crushed_it" : "better_luck"))
                         .font(.system(size: 18, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
                         .padding(.top, 12)
@@ -303,7 +303,7 @@ struct ChallengeResultView: View {
             Spacer().frame(height: 20)
 
             SlideAppearWrapper(delay: 0.1) {
-                Text("FINAL RANKING")
+                Text(L10n.t("final_ranking_title"))
                     .font(.system(size: 14, weight: .heavy))
                     .foregroundColor(.white.opacity(0.5))
                     .tracking(4)
@@ -370,14 +370,14 @@ struct ChallengeResultView: View {
                 Spacer()
 
                 SlideAppearWrapper(delay: 0.1) {
-                    Text("BEST DAY")
+                    Text(L10n.t("best_day"))
                         .font(.system(size: 14, weight: .heavy))
                         .foregroundColor(.white.opacity(0.5))
                         .tracking(4)
                 }
 
                 SlideAppearWrapper(delay: 0.2) {
-                    Text("Least screen time\nin a single day")
+                    Text(L10n.t("least_st_day"))
                         .font(.system(size: 20, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
                         .multilineTextAlignment(.center)
@@ -406,7 +406,7 @@ struct ChallengeResultView: View {
                         .foregroundColor(Theme.green)
                         .padding(.top, 8)
 
-                    Text("screen time")
+                    Text(L10n.t("screen_time_label"))
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
                         .padding(.top, 2)
@@ -416,7 +416,7 @@ struct ChallengeResultView: View {
                 Spacer()
             } else {
                 Spacer()
-                Text("No data recorded")
+                Text(L10n.t("no_data_recorded"))
                     .font(.system(size: 20, weight: .medium))
                     .foregroundColor(.white.opacity(0.5))
                 Spacer()
@@ -432,14 +432,14 @@ struct ChallengeResultView: View {
                 Spacer()
 
                 SlideAppearWrapper(delay: 0.1) {
-                    Text("WORST DAY")
+                    Text(L10n.t("worst_day"))
                         .font(.system(size: 14, weight: .heavy))
                         .foregroundColor(.white.opacity(0.5))
                         .tracking(4)
                 }
 
                 SlideAppearWrapper(delay: 0.2) {
-                    Text("Most screen time\nin a single day")
+                    Text(L10n.t("most_st_day"))
                         .font(.system(size: 20, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
                         .multilineTextAlignment(.center)
@@ -468,7 +468,7 @@ struct ChallengeResultView: View {
                         .foregroundColor(Theme.red)
                         .padding(.top, 8)
 
-                    Text("screen time")
+                    Text(L10n.t("screen_time_label"))
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
                         .padding(.top, 2)
@@ -478,7 +478,7 @@ struct ChallengeResultView: View {
                 Spacer()
             } else {
                 Spacer()
-                Text("No data recorded")
+                Text(L10n.t("no_data_recorded"))
                     .font(.system(size: 20, weight: .medium))
                     .foregroundColor(.white.opacity(0.5))
                 Spacer()
@@ -493,14 +493,14 @@ struct ChallengeResultView: View {
             Spacer()
 
             SlideAppearWrapper(delay: 0.1) {
-                Text("YOUR GROUP")
+                Text(L10n.t("your_group"))
                     .font(.system(size: 14, weight: .heavy))
                     .foregroundColor(.white.opacity(0.5))
                     .tracking(4)
             }
 
             SlideAppearWrapper(delay: 0.2) {
-                Text("in numbers")
+                Text(L10n.t("in_numbers"))
                     .font(.system(size: 20, weight: .medium))
                     .foregroundColor(.white.opacity(0.6))
                     .padding(.top, 4)
@@ -512,7 +512,7 @@ struct ChallengeResultView: View {
                 SlideAppearWrapper(delay: 0.3) {
                     statCard(
                         number: "\(group.members.count)",
-                        label: "PLAYERS",
+                        label: L10n.t("players"),
                         accent: Theme.green
                     )
                 }
@@ -520,7 +520,7 @@ struct ChallengeResultView: View {
                 SlideAppearWrapper(delay: 0.4) {
                     statCard(
                         number: "\(group.duration.days)",
-                        label: "DAYS",
+                        label: L10n.t("days_label"),
                         accent: Theme.orange
                     )
                 }
@@ -528,7 +528,7 @@ struct ChallengeResultView: View {
                 SlideAppearWrapper(delay: 0.5) {
                     statCard(
                         number: formatTime(group.goalMinutes),
-                        label: "DAILY GOAL",
+                        label: L10n.t("daily_goal_label"),
                         accent: Color.white
                     )
                 }
@@ -537,7 +537,7 @@ struct ChallengeResultView: View {
                     SlideAppearWrapper(delay: 0.6) {
                         statCard(
                             number: formatTime(groupAvg),
-                            label: "GROUP AVERAGE",
+                            label: L10n.t("group_average"),
                             accent: groupAvg <= group.goalMinutes ? Theme.green : Theme.red
                         )
                     }
@@ -562,7 +562,7 @@ struct ChallengeResultView: View {
             }
 
             SlideAppearWrapper(delay: 0.25) {
-                Text("READY FOR\nANOTHER ONE?")
+                Text(L10n.t("ready_another"))
                     .font(.system(size: 38, weight: .black))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
@@ -571,7 +571,7 @@ struct ChallengeResultView: View {
             }
 
             SlideAppearWrapper(delay: 0.4) {
-                Text("Same group, new challenge.")
+                Text(L10n.t("same_group_new"))
                     .font(.system(size: 17, weight: .medium))
                     .foregroundColor(.white.opacity(0.5))
                     .padding(.top, 8)
@@ -586,7 +586,7 @@ struct ChallengeResultView: View {
                         newGroupName = suggestedName
                         showRenameSheet = true
                     }) {
-                        Text("Restart same challenge")
+                        Text(L10n.t("restart_challenge"))
                             .font(.system(size: 18, weight: .bold))
                             .foregroundColor(.black)
                             .frame(maxWidth: .infinity)
@@ -600,7 +600,7 @@ struct ChallengeResultView: View {
                         newGroupName = suggestedName
                         showRenameSheet = true
                     }) {
-                        Text("Harder goal (\(formatTime(harderGoal))/day)")
+                        Text("\(L10n.t("harder_goal")) (\(formatTime(harderGoal))/day)")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white.opacity(0.8))
                             .frame(maxWidth: .infinity)
@@ -641,7 +641,7 @@ struct ChallengeResultView: View {
             Image(systemName: "chevron.left")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(.white.opacity(0.3))
-            Text("Swipe to explore")
+            Text(L10n.t("swipe_to_explore"))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.3))
         }
@@ -659,7 +659,7 @@ struct ChallengeResultView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 52))
                     .foregroundColor(Theme.green)
-                Text("New challenge started")
+                Text(L10n.t("new_challenge_started"))
                     .font(.system(size: 24, weight: .bold))
                     .foregroundColor(Theme.text)
                 Text(newGroupName)
@@ -667,7 +667,7 @@ struct ChallengeResultView: View {
                     .foregroundColor(Theme.textFaint)
             }
             Spacer()
-            PrimaryButton(label: "Let's go") { dismiss() }
+            PrimaryButton(label: L10n.t("lets_go")) { dismiss() }
                 .padding(.horizontal, 28).padding(.bottom, 52)
         }
     }
@@ -683,7 +683,7 @@ struct ChallengeResultView: View {
                         Image(systemName: "xmark").font(.system(size: 18)).foregroundColor(Theme.textMuted)
                     }
                     Spacer()
-                    Text("Name the new challenge").font(.system(size: 16, weight: .medium)).foregroundColor(Theme.textMuted)
+                    Text(L10n.t("name_challenge")).font(.system(size: 16, weight: .medium)).foregroundColor(Theme.textMuted)
                     Spacer()
                     Image(systemName: "xmark").opacity(0).font(.system(size: 18))
                 }
@@ -702,7 +702,7 @@ struct ChallengeResultView: View {
 
                 Spacer()
 
-                PrimaryButton(label: "Start") {
+                PrimaryButton(label: L10n.t("start")) {
                     showRenameSheet = false
                     createRestartGroup(harder: restartHarder, name: newGroupName)
                 }

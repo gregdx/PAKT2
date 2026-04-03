@@ -391,6 +391,7 @@ enum L10n {
 
         // Streak
         "streak_explanation":   "stay under 3h to earn streaks",
+        "streak_explanation_long": "Stay under the limit for several consecutive days to start a streak. The longer your streak, the better.",
 
         // Misc
         "per_day":              "/day",
@@ -441,5 +442,36 @@ enum L10n {
 
         // Group list
         "starts_midnight":          "Starts at midnight",
+
+        // Charts
+        "details":                  "details",
+
+        // Challenge result slides
+        "the_winner":               "THE WINNER",
+        "avg_per_day":              "average per day",
+        "goal_reached_title":       "GOAL\nREACHED",
+        "goal_not_reached_title":   "GOAL\nNOT REACHED",
+        "group_crushed_it":         "Your group crushed it.",
+        "better_luck":              "Better luck next time.",
+        "final_ranking_title":      "FINAL RANKING",
+        "best_day":                 "BEST DAY",
+        "least_st_day":             "Least screen time\nin a single day",
+        "screen_time_label":        "screen time",
+        "no_data_recorded":         "No data recorded",
+        "worst_day":                "WORST DAY",
+        "most_st_day":              "Most screen time\nin a single day",
+        "your_group":               "YOUR GROUP",
+        "in_numbers":               "in numbers",
+        "players":                  "PLAYERS",
+        "days_label":               "DAYS",
+        "daily_goal_label":         "DAILY GOAL",
+        "group_average":            "GROUP AVERAGE",
+        "ready_another":            "READY FOR\nANOTHER ONE?",
+        "same_group_new":           "Same group, new challenge.",
+        "restart_challenge":        "Restart same challenge",
+        "harder_goal":              "Harder goal",
+        "swipe_to_explore":         "Swipe to explore",
+        "new_challenge_btn":        "Start",
+        "name_challenge":           "Name the new challenge",
     ]
 }

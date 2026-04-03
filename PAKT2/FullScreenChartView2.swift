@@ -69,7 +69,7 @@ struct FullScreenChartView: View {
     var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Details")
+                Text(L10n.t("details"))
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundColor(Theme.text)
                 Text("goal · \(formatTime(goalMinutes)) / day")
@@ -127,7 +127,7 @@ struct FullScreenChartView: View {
                         }
                         .stroke(Theme.textMuted, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
 
-                        Text("goal")
+                        Text(L10n.t("goal"))
                             .font(.system(size: 12))
                             .foregroundColor(Theme.textMuted)
                             .position(x: 18, y: yObj - 10)
@@ -248,7 +248,7 @@ struct FullScreenChartView: View {
                 Text("\(pct)%")
                     .font(.system(size: 34, weight: .black))
                     .foregroundColor(color)
-                Text("of waking day")
+                Text(L10n.t("pct_waking"))
                     .font(.system(size: 13))
                     .foregroundColor(Theme.textFaint)
                 if days > 0 {
@@ -369,7 +369,7 @@ struct FullScreenChartView: View {
                             Text("\(wakingPct(mins))%")
                                 .font(.system(size: 42, weight: .black))
                                 .foregroundColor(Theme.red)
-                            Text("of waking day")
+                            Text(L10n.t("pct_waking"))
                                 .font(.system(size: 13))
                                 .foregroundColor(Theme.textFaint)
                             Text("+\(formatTime(mins - goalMinutes))")
@@ -395,7 +395,7 @@ struct FullScreenChartView: View {
                                 .fill(Theme.text)
                                 .frame(width: 2, height: 18)
                                 .offset(x: goalX - 1, y: -5)
-                            Text("goal")
+                            Text(L10n.t("goal"))
                                 .font(.system(size: 12))
                                 .foregroundColor(Theme.textMuted)
                                 .offset(x: max(goalX - 10, 0), y: 10)

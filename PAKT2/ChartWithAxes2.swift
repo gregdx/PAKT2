@@ -87,7 +87,7 @@ struct ChartWithAxes: View {
                             style: StrokeStyle(lineWidth: 1, dash: [4, 4])
                         )
 
-                        Text("goal")
+                        Text(L10n.t("goal"))
                             .font(AppFont.sans(12))
                             .foregroundColor(Theme.textMuted)
                             .position(x: 18, y: yObj - 9)
@@ -118,7 +118,7 @@ struct ChartWithAxes: View {
 
                         // Details button
                         HStack(spacing: 4) {
-                            Text("details")
+                            Text(L10n.t("details"))
                                 .font(AppFont.sans(12))
                                 .foregroundColor(Theme.textFaint)
                             Image(systemName: "chevron.right")

@@ -220,15 +220,15 @@ struct SettingsView: View {
             Button(action: { withAnimation(.easeInOut(duration: 0.25)) { showStreakInfo.toggle() } }) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Screen time")
+                        Text(L10n.t("scope_total"))
                             .font(.system(size: 15, weight: .medium))
                             .foregroundColor(Theme.text)
-                        Text("3h daily limit")
+                        Text("\(formatTime(Int(goalHours * 60))) \(L10n.t("per_day_max"))")
                             .font(.system(size: 13))
                             .foregroundColor(Theme.textFaint)
                     }
                     Spacer()
-                    Text("3h00")
+                    Text(formatTime(Int(goalHours * 60)))
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(Theme.text)
                 }
@@ -241,15 +241,15 @@ struct SettingsView: View {
             Button(action: { withAnimation(.easeInOut(duration: 0.25)) { showStreakInfo.toggle() } }) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Social media")
+                        Text(L10n.t("on_social_media"))
                             .font(.system(size: 15, weight: .medium))
                             .foregroundColor(Theme.text)
-                        Text("2h daily limit")
+                        Text("\(formatTime(Int(socialGoalHours * 60))) \(L10n.t("per_day_max"))")
                             .font(.system(size: 13))
                             .foregroundColor(Theme.textFaint)
                     }
                     Spacer()
-                    Text("2h00")
+                    Text(formatTime(Int(socialGoalHours * 60)))
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(Theme.text)
                 }
@@ -258,7 +258,7 @@ struct SettingsView: View {
 
             // Streak explanation
             if showStreakInfo {
-                Text("Stay under the limit for several consecutive days to start a streak. The longer your streak, the better.")
+                Text(L10n.t("streak_explanation_long"))
                     .font(.system(size: 14))
                     .foregroundColor(Theme.textMuted)
                     .padding(14)
