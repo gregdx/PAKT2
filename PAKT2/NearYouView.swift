@@ -16,6 +16,7 @@ struct Venue: Identifiable {
     let gradient: [Color] // fallback gradient
     let icon: String
     let tagline: String
+    let description: String
 }
 
 enum VenueCategory: String, CaseIterable {
@@ -48,10 +49,11 @@ extension Venue {
               reviewCount: 1240,
               websiteURL: "https://leflore.brussels",
               instagramHandle: "leflore.brussels",
-              photoURL: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=600&q=80",
+              photoURL: "https://wp.localguide.brussels/wp-content/uploads/2025/01/Le-Flore-1500x900.webp",
               gradient: [Color(red: 0.85, green: 0.65, blue: 0.45), Color(red: 0.65, green: 0.40, blue: 0.25)],
               icon: "cup.and.saucer.fill",
-              tagline: "Bar · Brunch · Bois de la Cambre"),
+              tagline: "Bar · Brunch · Bois de la Cambre",
+              description: "A trendy guinguette in the heart of the Bois de la Cambre. Cocktails, brunch, tapas — the perfect spot to hang out with friends instead of scrolling. Open weekends with a retro Miami vibe terrace."),
         Venue(name: "Syncycle",
               category: .fitness,
               address: "Rue Lesbroussart 64, 1050 Ixelles",
@@ -60,10 +62,11 @@ extension Venue {
               reviewCount: 187,
               websiteURL: "https://www.syncycle.be",
               instagramHandle: "syncycle",
-              photoURL: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600&q=80",
+              photoURL: "https://images.squarespace-cdn.com/content/v1/6889f6089a0d7501f7433325/501e49a7-9468-4872-944c-d4e726a31fcb/DSC05718.jpg",
               gradient: [Color(red: 0.20, green: 0.20, blue: 0.35), Color(red: 0.35, green: 0.25, blue: 0.55)],
               icon: "figure.indoor.cycle",
-              tagline: "Indoor cycling studio"),
+              tagline: "Indoor cycling studio",
+              description: "An intimate indoor cycling experience in the heart of Ixelles. High-energy classes that connect body and mind to the rhythm of the music. Full-body workout, premium sound system, and great community vibes."),
         Venue(name: "Bois de la Cambre",
               category: .outdoor,
               address: "1000 Bruxelles",
@@ -75,7 +78,8 @@ extension Venue {
               photoURL: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=600&q=80",
               gradient: [Color(red: 0.15, green: 0.45, blue: 0.25), Color(red: 0.08, green: 0.30, blue: 0.18)],
               icon: "leaf.fill",
-              tagline: "Park · Run · Walk · Lake"),
+              tagline: "Park · Run · Walk · Lake",
+              description: "Brussels' most beautiful urban park. 124 hectares of forest, a lake, running paths, and open lawns. Perfect for a morning jog, a walk with friends, or just sitting on the grass with a book."),
         Venue(name: "Basic-Fit Ixelles",
               category: .fitness,
               address: "Chaussée d'Ixelles 29, 1050 Ixelles",
@@ -87,7 +91,8 @@ extension Venue {
               photoURL: "https://images.unsplash.com/photo-1540497077202-7c8a3999166f?w=600&q=80",
               gradient: [Color(red: 0.90, green: 0.50, blue: 0.15), Color(red: 0.75, green: 0.30, blue: 0.10)],
               icon: "dumbbell.fill",
-              tagline: "Gym · 24/7"),
+              tagline: "Gym · 24/7",
+              description: "Open 24/7 fitness club on the Chaussée d'Ixelles. Cardio, strength, free weights, and group classes. Affordable and always accessible — no excuse to stay on your phone."),
         Venue(name: "Tour & Taxis Padel Club",
               category: .sport,
               address: "Av. du Port 86, 1000 Bruxelles",
@@ -99,7 +104,8 @@ extension Venue {
               photoURL: "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=600&q=80",
               gradient: [Color(red: 0.25, green: 0.35, blue: 0.55), Color(red: 0.15, green: 0.20, blue: 0.40)],
               icon: "sportscourt.fill",
-              tagline: "Padel · 8 courts · Bar"),
+              tagline: "Padel · 8 courts · Bar",
+              description: "Brussels' biggest indoor padel facility with 8 professional courts, a bar, and a pro shop. Book a court on Playtomic, grab a friend, and play. Great way to disconnect from screens."),
         Venue(name: "Aspria Royal La Rasante",
               category: .wellness,
               address: "Rue Sombre 56, 1200 Woluwe-Saint-Lambert",
@@ -111,7 +117,8 @@ extension Venue {
               photoURL: "https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?w=600&q=80",
               gradient: [Color(red: 0.55, green: 0.40, blue: 0.60), Color(red: 0.35, green: 0.22, blue: 0.45)],
               icon: "sparkles",
-              tagline: "Spa · Pool · Gym · Wellness"),
+              tagline: "Spa · Pool · Gym · Wellness",
+              description: "A premium members club with 100 years of sporting heritage. Four hectares of gardens, seven tennis courts, two pools, state-of-the-art fitness and a world-class spa. The ultimate wellness escape."),
     ]
 }
 
@@ -125,6 +132,7 @@ struct NearYouView: View {
     @State private var radiusKm: Double = 5.0
     @State private var showRadiusPicker = false
     @State private var inviteFriend: Venue? = nil
+    @State private var selectedVenue: Venue? = nil
     @State private var appeared = false
 
     private var filteredVenues: [Venue] {
@@ -153,6 +161,9 @@ struct NearYouView: View {
         .sheet(item: $inviteFriend) { venue in
             InviteFriendSheet(venue: venue, friends: fm.friends)
                 .environmentObject(appState)
+        }
+        .sheet(item: $selectedVenue) { venue in
+            VenueDetailSheet(venue: venue, onInvite: { inviteFriend = venue })
         }
     }
 
@@ -276,6 +287,7 @@ struct NearYouView: View {
     // MARK: - Venue card
 
     private func venueCard(_ venue: Venue) -> some View {
+        Button(action: { selectedVenue = venue }) {
         VStack(spacing: 0) {
             // Photo
             ZStack(alignment: .bottomLeading) {
@@ -303,9 +315,9 @@ struct NearYouView: View {
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .foregroundColor(.white)
-                .padding(.vertical, 5)
+                .padding(.vertical, 6)
                 .padding(.horizontal, 10)
-                .background(.ultraThinMaterial)
+                .background(Color.black.opacity(0.6))
                 .cornerRadius(12)
                 .padding(12)
             }
@@ -396,6 +408,8 @@ struct NearYouView: View {
             .padding(14)
         }
         .liquidGlass(cornerRadius: 18)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
@@ -483,6 +497,139 @@ struct InviteFriendSheet: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 40)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Venue detail sheet
+
+struct VenueDetailSheet: View {
+    let venue: Venue
+    var onInvite: () -> Void
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.openURL) var openURL
+
+    var body: some View {
+        ZStack {
+            Theme.bg.ignoresSafeArea()
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Hero image
+                    ZStack(alignment: .topLeading) {
+                        AsyncImage(url: URL(string: venue.photoURL)) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().scaledToFill()
+                            default:
+                                LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+                                    .overlay(
+                                        Image(systemName: venue.icon)
+                                            .font(.system(size: 60, weight: .light))
+                                            .foregroundColor(.white.opacity(0.2))
+                                    )
+                            }
+                        }
+                        .frame(height: 240)
+                        .clipped()
+
+                        // Close button
+                        Button(action: { dismiss() }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 32, height: 32)
+                                .background(Color.black.opacity(0.5))
+                                .clipShape(Circle())
+                        }
+                        .padding(.top, 56).padding(.leading, 20)
+                    }
+
+                    // Content
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Name + rating
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(venue.name)
+                                    .font(.system(size: 26, weight: .bold))
+                                    .foregroundColor(Theme.text)
+                                Text(venue.tagline)
+                                    .font(.system(size: 15))
+                                    .foregroundColor(Theme.textMuted)
+                            }
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Theme.orange)
+                                Text(String(format: "%.1f", venue.rating))
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundColor(Theme.text)
+                            }
+                        }
+
+                        // Distance + address
+                        HStack(spacing: 16) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "location.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Theme.textMuted)
+                                Text(String(format: "%.1f km", venue.distance))
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(Theme.text)
+                            }
+                            Text(venue.address)
+                                .font(.system(size: 14))
+                                .foregroundColor(Theme.textFaint)
+                                .lineLimit(1)
+                        }
+
+                        // Description
+                        Text(venue.description)
+                            .font(.system(size: 15))
+                            .foregroundColor(Theme.textMuted)
+                            .lineSpacing(5)
+
+                        // Links
+                        HStack(spacing: 16) {
+                            Button(action: {
+                                if let url = URL(string: venue.websiteURL) { openURL(url) }
+                            }) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "safari").font(.system(size: 13))
+                                    Text("Website").font(.system(size: 14, weight: .medium))
+                                }
+                                .foregroundColor(Theme.textMuted)
+                            }
+                            Button(action: {
+                                if let url = URL(string: "https://instagram.com/\(venue.instagramHandle)") { openURL(url) }
+                            }) {
+                                HStack(spacing: 5) {
+                                    Text("ig").font(.system(size: 14, weight: .heavy))
+                                    Text("@\(venue.instagramHandle)").font(.system(size: 14, weight: .medium))
+                                }
+                                .foregroundColor(Theme.textMuted)
+                            }
+                        }
+
+                        // CTA
+                        Button(action: { dismiss(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { onInvite() } }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "paperplane")
+                                    .font(.system(size: 14))
+                                Text(L10n.t("go_with_friend"))
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .foregroundColor(Theme.bg)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Theme.text)
+                            .cornerRadius(14)
+                        }
+                        .padding(.top, 8)
+                    }
+                    .padding(24)
                 }
             }
         }
