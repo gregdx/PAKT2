@@ -216,56 +216,59 @@ struct SettingsView: View {
 
     var goalSection: some View {
         VStack(spacing: 20) {
-            // Total screen time — fixed 3h
-            Button(action: { withAnimation(.easeInOut(duration: 0.25)) { showStreakInfo.toggle() } }) {
+            // Screen time goal
+            VStack(spacing: 12) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.t("scope_total"))
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(Theme.text)
-                        Text("\(formatTime(Int(goalHours * 60))) \(L10n.t("per_day_max"))")
-                            .font(.system(size: 13))
-                            .foregroundColor(Theme.textFaint)
-                    }
+                    Text(L10n.t("scope_total"))
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Theme.text)
                     Spacer()
                     Text(formatTime(Int(goalHours * 60)))
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(Theme.text)
                 }
+                Slider(value: $goalHours, in: 0.5...8.0, step: 0.5)
+                    .tint(Theme.green)
+                Text("\(Int(goalHours * 60.0 / kWakingMinutesPerDay * 100))% \(L10n.t("waking_pct"))")
+                    .font(.system(size: 13))
+                    .foregroundColor(Theme.textFaint)
             }
-            .buttonStyle(PlainButtonStyle())
 
             Rectangle().fill(Theme.separator).frame(height: 0.5)
 
-            // Social media — fixed 2h
-            Button(action: { withAnimation(.easeInOut(duration: 0.25)) { showStreakInfo.toggle() } }) {
+            // Social media goal
+            VStack(spacing: 12) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.t("on_social_media"))
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(Theme.text)
-                        Text("\(formatTime(Int(socialGoalHours * 60))) \(L10n.t("per_day_max"))")
-                            .font(.system(size: 13))
-                            .foregroundColor(Theme.textFaint)
-                    }
+                    Text(L10n.t("on_social_media"))
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Theme.text)
                     Spacer()
                     Text(formatTime(Int(socialGoalHours * 60)))
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(Theme.text)
                 }
+                Slider(value: $socialGoalHours, in: 0.5...5.0, step: 0.5)
+                    .tint(Theme.blue)
             }
-            .buttonStyle(PlainButtonStyle())
 
-            // Streak explanation
-            if showStreakInfo {
-                Text(L10n.t("streak_explanation_long"))
-                    .font(.system(size: 14))
-                    .foregroundColor(Theme.textMuted)
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Theme.bgWarm)
-                    .cornerRadius(10)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            // Save button
+            if goalHours != appState.goalHours || socialGoalHours != appState.socialGoalHours {
+                Button(action: {
+                    Task {
+                        await AuthManager.shared.updateGoal(hours: goalHours)
+                        appState.updateGoalHours(goalHours)
+                        appState.updateSocialGoalHours(socialGoalHours)
+                        goalSaved = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { goalSaved = false }
+                    }
+                }) {
+                    Text(goalSaved ? L10n.t("saved") : L10n.t("save_goal"))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(goalSaved ? Theme.green : Theme.text)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .liquidGlass(cornerRadius: 12)
+                }
             }
         }
     }

@@ -575,6 +575,20 @@ struct PickedFriend: Identifiable, Hashable {
     let name: String
 }
 
+// MARK: - Chat destination
+
+enum ChatDestination: Identifiable, Hashable {
+    case friend(uid: String, name: String)
+    case group(id: UUID)
+
+    var id: String {
+        switch self {
+        case .friend(let uid, _): return "friend_\(uid)"
+        case .group(let id): return "group_\(id)"
+        }
+    }
+}
+
 // MARK: - Conversations list
 
 enum MessageTab: String, CaseIterable {
@@ -586,8 +600,7 @@ struct ActivitiesView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject private var manager = ActivityManager.shared
     @ObservedObject private var fm = FriendManager.shared
-    @State private var pickedFriend: PickedFriend? = nil
-    @State private var selectedGroupChat: UUID? = nil
+    @State private var activeChat: ChatDestination? = nil
     @State private var showNewConversation = false
     @State private var selectedTab: MessageTab = .friends
     @State private var searchText = ""
@@ -598,35 +611,30 @@ struct ActivitiesView: View {
         ZStack {
             Theme.bg.ignoresSafeArea()
 
-            List {
-                Section {
-                    header.listRowInsets(EdgeInsets())
-                    searchBar.listRowInsets(EdgeInsets())
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    header
 
                     if showArchived {
-                        archivedSection.listRowInsets(EdgeInsets())
+                        archivedSection
                     } else {
-                        tabSelector.listRowInsets(EdgeInsets())
+                        searchBar
+                        tabSelector
 
                         switch selectedTab {
                         case .friends:
-                            friendsList.listRowInsets(EdgeInsets())
+                            friendsList
                         case .groups:
-                            groupsList.listRowInsets(EdgeInsets())
+                            groupsList
                         }
                     }
 
-                    Spacer().frame(height: 100).listRowInsets(EdgeInsets())
+                    Spacer().frame(height: 100)
                 }
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
             }
-            .listStyle(.plain)
-            .scrollIndicators(.hidden)
             .refreshable {
                 manager.load()
                 manager.loadAllPeerReceipts()
-                // Reload group messages for all active groups
                 for group in appState.groups where group.isActive {
                     manager.loadGroupMessages(group.id.uuidString)
                 }
@@ -634,21 +642,20 @@ struct ActivitiesView: View {
             }
         }
         .sheet(isPresented: $showNewConversation) { friendPickerSheet }
-        .fullScreenCover(item: $pickedFriend) { friend in
-            SwipeDismissView {
-                ConversationView(friendUid: friend.uid, friendName: friend.name, onClose: { pickedFriend = nil })
-                    .environmentObject(appState)
-            } onDismiss: { pickedFriend = nil }
-        }
-        .fullScreenCover(isPresented: Binding(
-            get: { selectedGroupChat != nil },
-            set: { if !$0 { selectedGroupChat = nil } }
-        )) {
-            if let gid = selectedGroupChat, let group = appState.groups.first(where: { $0.id == gid }) {
+        .fullScreenCover(item: $activeChat) { chat in
+            switch chat {
+            case .friend(let uid, let name):
                 SwipeDismissView {
-                    GroupChatView(group: group)
+                    ConversationView(friendUid: uid, friendName: name, onClose: { activeChat = nil })
                         .environmentObject(appState)
-                } onDismiss: { selectedGroupChat = nil }
+                } onDismiss: { activeChat = nil }
+            case .group(let gid):
+                if let group = appState.groups.first(where: { $0.id == gid }) {
+                    SwipeDismissView {
+                        GroupChatView(group: group)
+                            .environmentObject(appState)
+                    } onDismiss: { activeChat = nil }
+                }
             }
         }
         .onAppear {
@@ -669,7 +676,7 @@ struct ActivitiesView: View {
                         .foregroundColor(Theme.text)
                 }
             }
-            Text(showArchived ? "Archived" : "Messages")
+            Text(showArchived ? L10n.t("archive") : L10n.t("activities_title"))
                 .font(.system(size: 34, weight: .bold))
                 .foregroundColor(Theme.text)
             Spacer()
@@ -708,7 +715,7 @@ struct ActivitiesView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15))
                 .foregroundColor(Theme.textFaint)
-            TextField("Search", text: $searchText)
+            TextField(L10n.t("search_friends"), text: $searchText)
                 .font(.system(size: 16))
                 .foregroundColor(Theme.text)
                 .autocapitalization(.none)
@@ -722,7 +729,7 @@ struct ActivitiesView: View {
                         .foregroundColor(Theme.textFaint)
                 }
             } else if isSearching {
-                Button("Cancel") {
+                Button(L10n.t("cancel")) {
                     withAnimation { isSearching = false }
                     searchText = ""
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -806,7 +813,7 @@ struct ActivitiesView: View {
                             HStack(spacing: 16) {
                                 ForEach(otherFriends) { friend in
                                     Button(action: {
-                                        pickedFriend = PickedFriend(uid: friend.id, name: friend.firstName)
+                                        activeChat = .friend(uid: friend.id, name: friend.firstName)
                                     }) {
                                         VStack(spacing: 8) {
                                             AvatarView(name: friend.firstName, size: 52, color: Theme.textMuted,
@@ -876,7 +883,7 @@ struct ActivitiesView: View {
                 .padding(.top, 60)
             } else {
                 ForEach(sortedGroups) { group in
-                    Button(action: { selectedGroupChat = group.id }) {
+                    Button(action: { activeChat = .group(id: group.id) }) {
                         groupChatCard(group)
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -946,7 +953,7 @@ struct ActivitiesView: View {
         let hasUnread = manager.hasUnreadMessages(from: uid)
         let seen = manager.seenByPeer(uid)
 
-        return Button(action: { pickedFriend = PickedFriend(uid: uid, name: name) }) {
+        return Button(action: { activeChat = .friend(uid: uid, name: name) }) {
             HStack(spacing: 14) {
                 AvatarView(name: name, size: 52, color: Theme.textMuted, uid: uid, isMe: false)
                     .environmentObject(appState)
@@ -1051,7 +1058,7 @@ struct ActivitiesView: View {
                             Button(action: {
                                 showNewConversation = false
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                                    pickedFriend = PickedFriend(uid: friend.id, name: friend.firstName)
+                                    activeChat = .friend(uid: friend.id, name: friend.firstName)
                                 }
                             }) {
                                 HStack(spacing: 14) {

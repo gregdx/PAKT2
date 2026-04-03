@@ -187,11 +187,22 @@ struct GroupsListView: View {
             if !activeGroups.isEmpty {
                 SectionTitle(text: L10n.t("active_pakts"))
                 ForEach(activeGroups) { group in
+                    let isCreator = !uid.isEmpty && group.creatorId == uid
                     Button(action: { selectedGroupId = group.id }) {
                         GroupCard(group: group, todayKey: todayKey)
                             .environmentObject(appState)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .contextMenu {
+                        Button(role: .destructive) { appState.leaveGroup(group) } label: {
+                            Label(L10n.t("leave_group"), systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                        if isCreator {
+                            Button(role: .destructive) { appState.deleteGroup(group) } label: {
+                                Label(L10n.t("delete_pakt"), systemImage: "trash")
+                            }
+                        }
+                    }
                 }
             }
 
@@ -369,12 +380,14 @@ struct GroupCard: View {
                         .padding(.leading, 14)
                 }
                 Spacer()
-                Text("\(group.members.count)")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Theme.textFaint)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Theme.textFaint)
+                HStack(spacing: 6) {
+                    Text("\(group.members.count)")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Theme.textFaint)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Theme.textFaint)
+                }
             }
         }
         .padding(20)
