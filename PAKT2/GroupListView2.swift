@@ -387,10 +387,7 @@ struct GroupCard: View {
         .liquidGlass(cornerRadius: 20)
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(group.scope == .social || group.scope == .apps
-                        ? Theme.blue.opacity(0.4)
-                        : Color.white.opacity(0.15),
-                        lineWidth: group.scope == .social || group.scope == .apps ? 1.5 : 0.5)
+                .stroke(Theme.border.opacity(0.3), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
     }
