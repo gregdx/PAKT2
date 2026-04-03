@@ -1285,7 +1285,7 @@ struct ConversationView: View {
         .padding(.vertical, 10)
         .liquidGlass(cornerRadius: 20)
         .padding(.horizontal, 16)
-        .padding(.bottom, 34)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Send text
