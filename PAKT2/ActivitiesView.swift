@@ -1500,6 +1500,7 @@ struct ConversationView: View {
                 }
             }
         }
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .liquidGlass(cornerRadius: 20)
         .frame(maxWidth: 280)
     }
