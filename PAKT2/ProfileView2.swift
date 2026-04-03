@@ -470,60 +470,73 @@ struct ProfileView: View {
     // MARK: - Header
 
     var header: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 20) {
+            // Title row
             HStack {
-                Button(action: { showFriends = true }) {
-                    ZStack(alignment: .topTrailing) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "person.2").font(.system(size: 15))
-                            Text(L10n.t("friends")).font(.system(size: 14, weight: .medium))
-                        }
-                        .foregroundColor(Theme.textMuted)
-                        .padding(.vertical, 9).padding(.horizontal, 14)
-                        .liquidGlass(cornerRadius: 10)
-                        if !fm.incomingRequests.isEmpty {
-                            Circle().fill(Theme.red).frame(width: 10, height: 10).offset(x: 2, y: -2)
+                Text(L10n.t("profile"))
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(Theme.text)
+                Spacer()
+                HStack(spacing: 8) {
+                    Button(action: { showFriends = true }) {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "person.2")
+                                .font(.system(size: 15))
+                                .foregroundColor(Theme.textMuted)
+                                .frame(width: 36, height: 36)
+                                .liquidGlass(cornerRadius: 10)
+                            if !fm.incomingRequests.isEmpty {
+                                Circle().fill(Theme.red).frame(width: 10, height: 10).offset(x: 2, y: -2)
+                            }
                         }
                     }
+                    .accessibilityLabel(L10n.t("friends"))
+                    Button(action: { showSettings = true }) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 15))
+                            .foregroundColor(Theme.textMuted)
+                            .frame(width: 36, height: 36)
+                            .liquidGlass(cornerRadius: 10)
+                    }
+                    .accessibilityLabel(L10n.t("settings"))
                 }
-                .accessibilityLabel("Friends")
-                Spacer()
-                Button(action: { showSettings = true }) {
-                    Image(systemName: "gearshape").font(.system(size: 17))
-                        .foregroundColor(Theme.textMuted).frame(width: 40, height: 40)
-                        .liquidGlass(cornerRadius: 10)
-                }
-                .accessibilityLabel("Settings")
             }
             .padding(.horizontal, 24).padding(.top, 60)
 
-            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                ZStack {
-                    if let uiImage = appState.profileUIImage {
-                        Image(uiImage: uiImage).resizable().scaledToFill()
-                            .frame(width: 88, height: 88).clipShape(Circle())
-                    } else {
-                        Circle().fill(Theme.bgWarm).frame(width: 88, height: 88)
-                        Text(String(appState.userName.prefix(1)).uppercased())
-                            .font(.system(size: 32, weight: .bold)).foregroundColor(Theme.textMuted)
-                    }
-                    Circle().fill(Theme.text).frame(width: 26, height: 26)
-                        .overlay(Image(systemName: "camera").font(.system(size: 12, weight: .medium)).foregroundColor(Theme.bg))
-                        .offset(x: 30, y: 30)
-                }
-            }
-            .onChange(of: selectedPhoto) { newItem in
-                Task {
-                    if let data = try? await newItem?.loadTransferable(type: Data.self),
-                       let img  = UIImage(data: data) {
-                        await MainActor.run { appState.saveImage(img) }
+            // Avatar + name
+            HStack(spacing: 16) {
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    ZStack {
+                        if let uiImage = appState.profileUIImage {
+                            Image(uiImage: uiImage).resizable().scaledToFill()
+                                .frame(width: 64, height: 64).clipShape(Circle())
+                        } else {
+                            Circle().fill(Theme.bgWarm).frame(width: 64, height: 64)
+                            Text(String(appState.userName.prefix(1)).uppercased())
+                                .font(.system(size: 24, weight: .bold)).foregroundColor(Theme.textMuted)
+                        }
+                        Circle().fill(Theme.text).frame(width: 22, height: 22)
+                            .overlay(Image(systemName: "camera").font(.system(size: 10, weight: .medium)).foregroundColor(Theme.bg))
+                            .offset(x: 22, y: 22)
                     }
                 }
-            }
+                .onChange(of: selectedPhoto) { newItem in
+                    Task {
+                        if let data = try? await newItem?.loadTransferable(type: Data.self),
+                           let img  = UIImage(data: data) {
+                            await MainActor.run { appState.saveImage(img) }
+                        }
+                    }
+                }
 
-            Text(appState.userName).font(.system(size: 30, weight: .bold)).foregroundColor(Theme.text)
+                Text(appState.userName)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(Theme.text)
+                Spacer()
+            }
+            .padding(.horizontal, 24)
         }
-        .padding(.bottom, 28)
+        .padding(.bottom, 20)
     }
 
     // MARK: - Groups summary
