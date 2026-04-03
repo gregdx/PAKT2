@@ -140,8 +140,8 @@ struct ContentView: View {
             }
             .padding(.vertical, 14).padding(.bottom, 20)
             .background(
-                Theme.bg.opacity(0.85)
-                    .overlay(.ultraThinMaterial)
+                Color.clear
+                    .background(.ultraThinMaterial)
                     .ignoresSafeArea(edges: .bottom)
             )
         }
