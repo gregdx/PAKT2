@@ -111,8 +111,12 @@ struct ProfileView: View {
         .onAppear { startProfileRefresh() }
         .task {
             if let uid = AuthManager.shared.currentUser?.id {
-                if let profile = try? await APIClient.shared.getUserProfile(uid: uid) {
+                do {
+                    let profile = try await APIClient.shared.getUserProfile(uid: uid)
                     await MainActor.run { myAchievements = Set(profile.achievements) }
+                    Log.d("[Profile] Achievements loaded: \(profile.achievements)")
+                } catch {
+                    Log.e("[Profile] Failed to load achievements: \(error)")
                 }
                 // Backfill le graphe avec les scores du backend (force: bypass cooldown)
                 ScreenTimeManager.shared.fetchSinceStartCumulative(uid: uid, appState: appState, force: true)
