@@ -391,7 +391,6 @@ struct NearYouView: View {
                     .background(Theme.text)
                     .cornerRadius(12)
                 }
-                }
                 .padding(.top, 4)
             }
             .padding(14)
