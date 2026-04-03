@@ -48,7 +48,7 @@ extension Venue {
               reviewCount: 1240,
               websiteURL: "https://leflore.brussels",
               instagramHandle: "leflore.brussels",
-              photoURL: "https://leflore.brussels/wp-content/uploads/2023/06/le-flore-brussels-terrasse.jpg",
+              photoURL: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=600&q=80",
               gradient: [Color(red: 0.85, green: 0.65, blue: 0.45), Color(red: 0.65, green: 0.40, blue: 0.25)],
               icon: "cup.and.saucer.fill",
               tagline: "Bar · Brunch · Bois de la Cambre"),
@@ -60,7 +60,7 @@ extension Venue {
               reviewCount: 187,
               websiteURL: "https://www.syncycle.be",
               instagramHandle: "syncycle",
-              photoURL: "https://www.syncycle.be/wp-content/uploads/2023/01/syncycle-studio.jpg",
+              photoURL: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600&q=80",
               gradient: [Color(red: 0.20, green: 0.20, blue: 0.35), Color(red: 0.35, green: 0.25, blue: 0.55)],
               icon: "figure.indoor.cycle",
               tagline: "Indoor cycling studio"),
@@ -72,7 +72,7 @@ extension Venue {
               reviewCount: 3420,
               websiteURL: "https://www.visit.brussels/fr/visitors/venue-details.Bois-de-la-Cambre.17411",
               instagramHandle: "visit.brussels",
-              photoURL: "https://www.visit.brussels/content/dam/visitbrussels/images/bois-de-la-cambre-lac.jpg",
+              photoURL: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=600&q=80",
               gradient: [Color(red: 0.15, green: 0.45, blue: 0.25), Color(red: 0.08, green: 0.30, blue: 0.18)],
               icon: "leaf.fill",
               tagline: "Park · Run · Walk · Lake"),
@@ -84,7 +84,7 @@ extension Venue {
               reviewCount: 312,
               websiteURL: "https://www.basic-fit.com/fr-be/clubs/basic-fit-ixelles-chaussee-d%E2%80%99ixelles-24-7-b9b62984685e4e0abfef339ef63360ff.html",
               instagramHandle: "basicfit",
-              photoURL: "https://edge.sitecorecloud.io/basicfit-e255e1c5/media/Project/BasicFit/basicfit-com/club-images/BF-club-interior.jpg",
+              photoURL: "https://images.unsplash.com/photo-1540497077202-7c8a3999166f?w=600&q=80",
               gradient: [Color(red: 0.90, green: 0.50, blue: 0.15), Color(red: 0.75, green: 0.30, blue: 0.10)],
               icon: "dumbbell.fill",
               tagline: "Gym · 24/7"),
@@ -96,7 +96,7 @@ extension Venue {
               reviewCount: 245,
               websiteURL: "https://playtomic.com/clubs/tour-taxis-padel-club",
               instagramHandle: "tourtaxispadelclub",
-              photoURL: "https://images.playtomic.io/clubs/tour-taxis-padel.jpg",
+              photoURL: "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=600&q=80",
               gradient: [Color(red: 0.25, green: 0.35, blue: 0.55), Color(red: 0.15, green: 0.20, blue: 0.40)],
               icon: "sportscourt.fill",
               tagline: "Padel · 8 courts · Bar"),
@@ -108,7 +108,7 @@ extension Venue {
               reviewCount: 890,
               websiteURL: "https://www.aspria.com/en/brussels-royal-la-rasante",
               instagramHandle: "aspria_belgium",
-              photoURL: "https://www.aspria.com/media/images/clubs/rasante-pool-exterior.jpg",
+              photoURL: "https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?w=600&q=80",
               gradient: [Color(red: 0.55, green: 0.40, blue: 0.60), Color(red: 0.35, green: 0.22, blue: 0.45)],
               icon: "sparkles",
               tagline: "Spa · Pool · Gym · Wellness"),
@@ -348,48 +348,49 @@ struct NearYouView: View {
                         .lineLimit(1)
                 }
 
-                // Action buttons
-                HStack(spacing: 8) {
-                    // Website
+                // Links
+                HStack(spacing: 12) {
                     Button(action: {
                         if let url = URL(string: venue.websiteURL) {
                             UIApplication.shared.open(url)
                         }
                     }) {
-                        Image(systemName: "safari")
-                            .font(.system(size: 15))
-                            .foregroundColor(Theme.text)
-                            .frame(width: 38, height: 38)
-                            .liquidGlass(cornerRadius: 10)
+                        HStack(spacing: 4) {
+                            Image(systemName: "safari").font(.system(size: 12))
+                            Text("Website").font(.system(size: 13, weight: .medium))
+                        }
+                        .foregroundColor(Theme.textMuted)
                     }
 
-                    // Instagram
                     Button(action: {
                         if let url = URL(string: "https://instagram.com/\(venue.instagramHandle)") {
                             UIApplication.shared.open(url)
                         }
                     }) {
-                        Image(systemName: "camera")
-                            .font(.system(size: 15))
-                            .foregroundColor(Theme.text)
-                            .frame(width: 38, height: 38)
-                            .liquidGlass(cornerRadius: 10)
+                        HStack(spacing: 4) {
+                            Text("ig").font(.system(size: 13, weight: .heavy))
+                            Text("@\(venue.instagramHandle)").font(.system(size: 13, weight: .medium))
+                        }
+                        .foregroundColor(Theme.textMuted)
                     }
 
-                    // Invite a friend
-                    Button(action: { inviteFriend = venue }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "paperplane")
-                                .font(.system(size: 13))
-                            Text(L10n.t("go_with_friend"))
-                                .font(.system(size: 13, weight: .medium))
-                        }
-                        .foregroundColor(Theme.bg)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Theme.text)
-                        .cornerRadius(10)
+                    Spacer()
+                }
+
+                // Invite a friend
+                Button(action: { inviteFriend = venue }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "paperplane")
+                            .font(.system(size: 13))
+                        Text(L10n.t("go_with_friend"))
+                            .font(.system(size: 14, weight: .semibold))
                     }
+                    .foregroundColor(Theme.bg)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Theme.text)
+                    .cornerRadius(12)
+                }
                 }
                 .padding(.top, 4)
             }
