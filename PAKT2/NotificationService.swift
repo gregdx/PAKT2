@@ -6,7 +6,6 @@ class NotificationService: ObservableObject {
     static let shared = NotificationService()
 
     private var cancellables = Set<AnyCancellable>()
-    private var isAppActive: Bool { UIApplication.shared.applicationState == .active }
 
     // MARK: - Permission
 
@@ -35,7 +34,7 @@ class NotificationService: ObservableObject {
         WebSocketManager.shared.onChatMessage
             .receive(on: DispatchQueue.main)
             .sink { [weak self] msg in
-                guard let self, !self.isAppActive else { return }
+                guard let self else { return }
                 guard msg.fromId != AppState.shared.currentUID else { return }
                 let name = msg.fromName ?? "Someone"
                 let body = msg.activityTitle ?? msg.text ?? L10n.t("sent")

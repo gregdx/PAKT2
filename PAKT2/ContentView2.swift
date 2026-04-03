@@ -30,6 +30,7 @@ struct ContentView: View {
                 await appState.syncFromBackend()
                 InvitationManager.shared.startListening()
                 FriendManager.shared.startListening()
+                NotificationService.shared.startListening()
                 WebSocketManager.shared.connect()
             }
         }
