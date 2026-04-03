@@ -435,5 +435,11 @@ enum L10n {
         // Group chat
         "sent":                     "Sent",
         "no_messages_yet":          "No messages yet",
+
+        // Invite
+        "invite_message":           "Join me on PAKT! Download the app and use my group code:",
+
+        // Group list
+        "starts_midnight":          "Starts at midnight",
     ]
 }

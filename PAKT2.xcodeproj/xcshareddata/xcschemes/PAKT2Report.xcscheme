@@ -57,8 +57,12 @@
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES"
       launchAutomaticallySubstyle = "2">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
+      <RemoteRunnable
+         runnableDebuggingMode = "0"
+         BundleIdentifier = "com.PAKT2"
+         RemotePath = "/var/containers/Bundle/Application/4ADA91F0-567C-460F-B817-1E3E153B7381/PAKT2.app">
+      </RemoteRunnable>
+      <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "DA623C392F68AFD10072BEE7"
@@ -66,7 +70,7 @@
             BlueprintName = "PAKT2"
             ReferencedContainer = "container:PAKT2.xcodeproj">
          </BuildableReference>
-      </BuildableProductRunnable>
+      </MacroExpansion>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

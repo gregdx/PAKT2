@@ -11,7 +11,6 @@ struct GroupDetailView: View {
     @State private var isRefreshing = false
     @State private var isSyncing = true
     @State private var selectedMemberUID: String?
-    @State private var tappedBarMember: String? = nil
     @State private var invitedIds: Set<String> = []
     @ObservedObject private var friendManager = FriendManager.shared
     @ObservedObject private var stManager = ScreenTimeManager.shared

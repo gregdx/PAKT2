@@ -134,7 +134,7 @@ struct AchievementDef: Identifiable {
     }
 
     static let all: [AchievementDef] = [
-        AchievementDef(id: "joined_group",     icon: "person.2",              nameEN: "Joined a group",      nameFR: "A rejoint un groupe",     color: Color(red: 0.35, green: 0.48, blue: 0.95)),
+        AchievementDef(id: "joined_group",     icon: "person.2",              nameEN: "Joined a group",      nameFR: "A rejoint un groupe",     color: Theme.blue),
         AchievementDef(id: "created_group",    icon: "crown",                 nameEN: "Created a group",     nameFR: "A créé un groupe",        color: Color(red: 1.00, green: 0.75, blue: 0.00)),
         AchievementDef(id: "invited_friend",   icon: "paperplane.fill",       nameEN: "Invited a friend",    nameFR: "A invité un ami",         color: Color(red: 0.20, green: 0.78, blue: 0.60)),
         AchievementDef(id: "first_under_3h",   icon: "clock.badge.checkmark", nameEN: "First day under 3h",  nameFR: "Premier jour sous 3h",    color: Color(red: 0.00, green: 0.75, blue: 0.36)),

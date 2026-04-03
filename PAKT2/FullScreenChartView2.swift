@@ -421,7 +421,7 @@ struct FullScreenChartView: View {
             let color = colors[safe: i] ?? Theme.textMuted
             for (j, val) in pts.enumerated() {
                 if val > goalMinutes {
-                    if result == nil || val > result!.2 {
+                    if val > (result?.2 ?? 0) {
                         result = (name, xLabels[safe: j] ?? "?", val, color)
                     }
                 }

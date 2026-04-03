@@ -49,7 +49,8 @@ struct FriendsView: View {
             }
         } message: {
             if let f = friendToRemove {
-                Text("Remove \(f.firstName) from your friends?")
+                Text("\(L10n.t("remove")) \(f.firstName)?")
+
             }
         }
     }
@@ -219,7 +220,7 @@ struct FriendsView: View {
             SectionTitle(text: L10n.t("invite_friend")).padding(.top, 20)
             Button(action: {
                 let code = appState.groups.first?.code ?? "PAKT"
-                UIPasteboard.general.string = "Join me on PAKT! Download the app and enter my group code: \(code)"
+                UIPasteboard.general.string = L10n.t("invite_message") + " \(code)"
             }) {
                 HStack(spacing: 14) {
                     Image(systemName: "link").font(.system(size: 17)).foregroundColor(Theme.textMuted)

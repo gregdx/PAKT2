@@ -141,6 +141,7 @@ struct Theme {
     static let green  = Color(red: 0.00, green: 0.75, blue: 0.36)
     static let red    = Color(red: 0.93, green: 0.18, blue: 0.09)
     static let orange = Color(red: 1.00, green: 0.60, blue: 0.00)
+    static let blue   = Color(red: 0.35, green: 0.48, blue: 0.95)
 
     static let cardBg     = bgCard
     static let cardBorder = border

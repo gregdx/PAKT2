@@ -5,7 +5,6 @@ import DeviceActivity
 // MARK: - ProfileView
 
 struct ProfileView: View {
-    var isVisible: Bool = true
     @EnvironmentObject var appState: AppState
     @ObservedObject private var stManager = ScreenTimeManager.shared
     @StateObject private var fm = FriendManager.shared

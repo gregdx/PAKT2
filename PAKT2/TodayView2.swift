@@ -206,7 +206,7 @@ enum ActCategory: String, CaseIterable {
         case .food:     return Theme.orange
         case .creative: return Color(red: 0.52, green: 0.18, blue: 0.72)
         case .sport:    return Theme.red
-        case .chill:    return Color(red: 0.35, green: 0.48, blue: 0.95)
+        case .chill:    return Theme.blue
         case .social:   return Color(red: 0.85, green: 0.55, blue: 0.20)
         }
     }

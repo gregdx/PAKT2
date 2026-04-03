@@ -462,7 +462,7 @@ final class ScreenTimeManager: ObservableObject {
                     if s.userId == uid && s.socialMinutes > 0 {
                         mySocialByDate[s.date] = max(mySocialByDate[s.date] ?? 0, s.socialMinutes)
                     }
-                    if lastSyncByMember[s.userId] == nil || s.submittedAt > lastSyncByMember[s.userId]! {
+                    if s.submittedAt > (lastSyncByMember[s.userId] ?? .distantPast) {
                         lastSyncByMember[s.userId] = s.submittedAt
                     }
                 }

@@ -277,14 +277,14 @@ struct GroupCard: View {
                                 }
                             }
                         } else if group.scope == .social {
-                            Text("SOCIAL")
+                            Text(L10n.t("social").uppercased())
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(.white)
                                 .padding(.vertical, 3).padding(.horizontal, 8)
-                                .background(Color(red: 0.35, green: 0.48, blue: 0.95))
+                                .background(Theme.blue)
                                 .cornerRadius(6)
                         } else {
-                            Text("SCREEN TIME")
+                            Text(L10n.t("scope_total").uppercased())
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(Theme.textFaint)
                                 .padding(.vertical, 3).padding(.horizontal, 8)
@@ -299,7 +299,7 @@ struct GroupCard: View {
                                 .background(Theme.orange.opacity(0.08))
                                 .cornerRadius(6)
                         } else if !group.hasStarted {
-                            Text("Starts at midnight")
+                            Text(L10n.t("starts_midnight"))
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(Theme.textMuted)
                                 .padding(.vertical, 3).padding(.horizontal, 8)
@@ -384,7 +384,7 @@ struct GroupCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(group.scope == .social || group.scope == .apps
-                        ? Color(red: 0.35, green: 0.48, blue: 0.95).opacity(0.4)
+                        ? Theme.blue.opacity(0.4)
                         : Color.white.opacity(0.15),
                         lineWidth: group.scope == .social || group.scope == .apps ? 1.5 : 0.5)
         )

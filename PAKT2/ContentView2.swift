@@ -117,7 +117,7 @@ struct ContentView: View {
                         .tag(1)
                     TodayView().environmentObject(appState)
                         .tag(2)
-                    ProfileView(isVisible: selectedTab == 3).environmentObject(appState)
+                    ProfileView().environmentObject(appState)
                         .tag(3)
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))

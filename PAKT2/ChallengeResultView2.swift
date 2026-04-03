@@ -33,7 +33,7 @@ struct ChallengeResultView: View {
         var worst: (Member, Int)? = nil
         for m in group.members {
             if let peak = m.history.map(\.minutes).max(), peak > 0 {
-                if worst == nil || peak > worst!.1 { worst = (m, peak) }
+                if peak > (worst?.1 ?? 0) { worst = (m, peak) }
             }
         }
         return worst.map { (member: $0.0, minutes: $0.1) }
@@ -45,7 +45,7 @@ struct ChallengeResultView: View {
         for m in group.members {
             let valid = m.history.map(\.minutes).filter { $0 > 0 }
             if let low = valid.min() {
-                if best == nil || low < best!.1 { best = (m, low) }
+                if low < (best?.1 ?? Int.max) { best = (m, low) }
             }
         }
         return best.map { (member: $0.0, minutes: $0.1) }
