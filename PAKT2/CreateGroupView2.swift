@@ -296,7 +296,7 @@ struct CreateGroupView: View {
                             HStack(spacing: 8) {
                                 Image(systemName: startNow ? "checkmark.circle.fill" : "circle")
                                     .foregroundColor(startNow ? Theme.text : Theme.textFaint)
-                                Text("Start now")
+                                Text(L10n.t("start_now"))
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundColor(startNow ? Theme.text : Theme.textMuted)
                             }

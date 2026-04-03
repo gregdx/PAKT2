@@ -158,25 +158,25 @@ struct GroupChatView: View {
             .background(Theme.bg)
         }
         .background(Theme.bg)
-        .confirmationDialog("Delete message", isPresented: Binding(
+        .confirmationDialog(L10n.t("delete"), isPresented: Binding(
             get: { messageToDelete != nil },
             set: { if !$0 { messageToDelete = nil } }
         ), titleVisibility: .visible) {
-            Button("Delete for me", role: .destructive) {
+            Button(L10n.t("delete_for_me"), role: .destructive) {
                 if let msg = messageToDelete {
                     withAnimation { manager.deleteMessageForMe(msg.id) }
                 }
                 messageToDelete = nil
             }
             if messageToDelete?.isFromMe == true {
-                Button("Delete for everyone", role: .destructive) {
+                Button(L10n.t("delete_for_everyone"), role: .destructive) {
                     if let msg = messageToDelete {
                         withAnimation { manager.deleteMessageForEveryone(msg.id) }
                     }
                     messageToDelete = nil
                 }
             }
-            Button("Cancel", role: .cancel) { messageToDelete = nil }
+            Button(L10n.t("cancel"), role: .cancel) { messageToDelete = nil }
         }
         .sheet(isPresented: $showGroupSettings) {
             EditGroupView(group: group)
@@ -302,13 +302,13 @@ struct GroupChatView: View {
                             Button {
                                 UIPasteboard.general.string = text
                             } label: {
-                                Label("Copy", systemImage: "doc.on.doc")
+                                Label(L10n.t("copy"), systemImage: "doc.on.doc")
                             }
                         }
                         Button(role: .destructive) {
                             messageToDelete = msg
                         } label: {
-                            Label("Delete", systemImage: "trash")
+                            Label(L10n.t("delete"), systemImage: "trash")
                         }
                     }
             }

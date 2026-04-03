@@ -284,7 +284,7 @@ struct EditGroupView: View {
                                     .font(.system(size: 16, weight: .medium))
                                     .foregroundColor(Theme.text)
                                 if member.uid == group.creatorId {
-                                    Text("Admin")
+                                    Text(L10n.t("admin"))
                                         .font(.system(size: 11, weight: .semibold))
                                         .foregroundColor(Theme.green)
                                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -292,7 +292,7 @@ struct EditGroupView: View {
                                         .cornerRadius(4)
                                 }
                                 if appState.isMe(member) {
-                                    Text("You")
+                                    Text(L10n.t("you"))
                                         .font(.system(size: 11, weight: .semibold))
                                         .foregroundColor(Theme.textFaint)
                                         .padding(.horizontal, 6).padding(.vertical, 2)

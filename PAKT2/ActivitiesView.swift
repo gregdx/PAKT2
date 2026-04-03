@@ -839,7 +839,7 @@ struct ActivitiesView: View {
                     Image(systemName: "archivebox")
                         .font(.system(size: 32))
                         .foregroundColor(Theme.textFaint)
-                    Text("No archived conversations")
+                    Text(L10n.t("no_archived_conversations"))
                         .font(.system(size: 15))
                         .foregroundColor(Theme.textMuted)
                 }
@@ -968,7 +968,7 @@ struct ActivitiesView: View {
                         if let last {
                             if let title = last.activityTitle, let emoji = last.activityEmoji {
                                 HStack(spacing: 4) {
-                                    if last.isFromMe { Text("You:").font(.system(size: 14)).foregroundColor(Theme.textMuted) }
+                                    if last.isFromMe { Text("\(L10n.t("you")):").font(.system(size: 14)).foregroundColor(Theme.textMuted) }
                                     Text(emoji).font(.system(size: 12))
                                     Text(title)
                                         .font(.system(size: 14, weight: hasUnread ? .medium : .regular))
@@ -1009,19 +1009,19 @@ struct ActivitiesView: View {
                 Button {
                     withAnimation { manager.unarchiveConversation(uid) }
                 } label: {
-                    Label("Unarchive", systemImage: "tray.and.arrow.up")
+                    Label(L10n.t("unarchive"), systemImage: "tray.and.arrow.up")
                 }
             } else {
                 Button {
                     withAnimation { manager.archiveConversation(uid) }
                 } label: {
-                    Label("Archive", systemImage: "archivebox")
+                    Label(L10n.t("archive"), systemImage: "archivebox")
                 }
             }
             Button(role: .destructive) {
                 withAnimation { manager.deleteConversation(uid) }
             } label: {
-                Label("Delete", systemImage: "trash")
+                Label(L10n.t("delete"), systemImage: "trash")
             }
         }
     }
@@ -1148,7 +1148,7 @@ struct ConversationView: View {
                             } else {
                                 HStack {
                                     Spacer()
-                                    Text("Sent")
+                                    Text(L10n.t("sent"))
                                         .font(.system(size: 11))
                                         .foregroundColor(Theme.textFaint)
                                 }
@@ -1429,14 +1429,14 @@ struct ConversationView: View {
             Button {
                 UIPasteboard.general.string = text
             } label: {
-                Label("Copy", systemImage: "doc.on.doc")
+                Label(L10n.t("copy"), systemImage: "doc.on.doc")
             }
         }
 
         Button(role: .destructive) {
             messageToDelete = msg
         } label: {
-            Label("Delete", systemImage: "trash")
+            Label(L10n.t("delete"), systemImage: "trash")
         }
     }
 

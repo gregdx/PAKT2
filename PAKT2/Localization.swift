@@ -440,8 +440,24 @@ enum L10n {
         // Invite
         "invite_message":           "Join me on PAKT! Download the app and use my group code:",
 
-        // Group list
+        // Group list / detail
         "starts_midnight":          "Starts at midnight",
+        "challenge_begins_midnight": "The challenge will begin at 00:00.\nEveryone's score starts fresh tomorrow.",
+
+        // Context menus
+        "archive":                  "Archive",
+        "unarchive":                "Unarchive",
+        "delete_for_me":            "Delete for me",
+        "delete_for_everyone":      "Delete for everyone",
+
+        // Activities
+        "no_archived_conversations": "No archived conversations",
+
+        // Members
+        "admin":                    "Admin",
+
+        // Create group
+        "start_now":                "Start now",
 
         // Charts
         "details":                  "details",

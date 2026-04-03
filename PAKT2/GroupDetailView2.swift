@@ -59,10 +59,10 @@ struct GroupDetailView: View {
                             Image(systemName: "moon.zzz.fill")
                                 .font(.system(size: 48))
                                 .foregroundColor(Theme.textFaint)
-                            Text("Starts at midnight")
+                            Text(L10n.t("starts_midnight"))
                                 .font(.system(size: 22, weight: .bold))
                                 .foregroundColor(Theme.text)
-                            Text("The challenge will begin at 00:00.\nEveryone's score starts fresh tomorrow.")
+                            Text(L10n.t("challenge_begins_midnight"))
                                 .font(.system(size: 15))
                                 .foregroundColor(Theme.textMuted)
                                 .multilineTextAlignment(.center)
@@ -367,7 +367,7 @@ struct GroupDetailView: View {
                 if chartLoading {
                     HStack(spacing: 8) {
                         ProgressView().tint(Theme.textFaint)
-                        Text("Loading...").font(.system(size: 13)).foregroundColor(Theme.textFaint)
+                        Text(L10n.t("loading")).font(.system(size: 13)).foregroundColor(Theme.textFaint)
                     }
                     .frame(height: 180)
                 } else {
