@@ -194,6 +194,7 @@ struct ContentView: View {
                 WebSocketManager.shared.subscribe("friends")
                 WebSocketManager.shared.subscribe("requests")
                 WebSocketManager.shared.subscribe("invitations")
+                WebSocketManager.shared.subscribe("chat")
                 if let deviceId = UIDevice.current.identifierForVendor?.uuidString {
                     WebSocketManager.shared.subscribe("pending:\(deviceId)")
                 }
