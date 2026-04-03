@@ -15,6 +15,7 @@ struct CreateGroupView: View {
     @State private var customStake      : String = ""
     @State private var requiredPlayers  : Int = 2
     @State private var createdCode = ""
+    @State private var startNow    = true
 
     var goalMinutes: Int { Int(goalHours * 60) }
     private static let wakingMinutesPerDay = kWakingMinutesPerDay
@@ -277,9 +278,48 @@ struct CreateGroupView: View {
         VStack(spacing: 0) {
             stepHeader(title: L10n.t("challenge_duration"), step: 4)
             Spacer()
-            VStack(spacing: 12) {
-                ForEach(ChallengeDuration.allCases, id: \.self) { d in
-                    durationCard(d)
+            VStack(spacing: 20) {
+                VStack(spacing: 12) {
+                    ForEach(ChallengeDuration.allCases, id: \.self) { d in
+                        durationCard(d)
+                    }
+                }
+
+                // Start time option
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("START TIME")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Theme.textFaint).tracking(1.6)
+
+                    HStack(spacing: 10) {
+                        Button(action: { startNow = true }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: startNow ? "checkmark.circle.fill" : "circle")
+                                    .foregroundColor(startNow ? Theme.text : Theme.textFaint)
+                                Text("Start now")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(startNow ? Theme.text : Theme.textMuted)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .liquidGlass(cornerRadius: 12)
+                            .opacity(startNow ? 1.0 : 0.6)
+                        }
+
+                        Button(action: { startNow = false }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: !startNow ? "checkmark.circle.fill" : "circle")
+                                    .foregroundColor(!startNow ? Theme.text : Theme.textFaint)
+                                Text("At 00:00")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(!startNow ? Theme.text : Theme.textMuted)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .liquidGlass(cornerRadius: 12)
+                            .opacity(!startNow ? 1.0 : 0.6)
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 28)
@@ -377,6 +417,8 @@ struct CreateGroupView: View {
         createdCode = code
         UIPasteboard.general.string = code
         let stakeValue = stake == .custom ? customStake : stake.rawValue
+        let start: Date = startNow ? Date() : Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date())
+        Log.d("[GROUP] Creating group: startNow=\(startNow) startDate=\(start) hasStarted=\(Date() >= start)")
         let newGroup = Group(
             name:        name,
             code:        code,
@@ -384,7 +426,7 @@ struct CreateGroupView: View {
             scope:       scope,
             goalMinutes: goalMinutes,
             duration:    duration,
-            startDate:   Date(),
+            startDate:   start,
             members: [
                 Member(
                     uid:          appState.currentUID,

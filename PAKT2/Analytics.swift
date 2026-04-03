@@ -1,5 +1,6 @@
 import Foundation
 
+// TODO: Integrate analytics provider (Mixpanel, PostHog, etc.)
 enum PaktAnalytics {
     static func signUp() {}
     static func signOut() {}

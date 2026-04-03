@@ -110,9 +110,17 @@ struct FriendsView: View {
         VStack(spacing: 0) {
             SectionTitle(text: L10n.t("my_friends") + " (\(fm.friends.count))")
             if fm.friends.isEmpty {
-                Text(L10n.t("no_friends"))
-                    .font(.system(size: 15)).foregroundColor(Theme.textFaint)
-                    .padding(.horizontal, 24).padding(.bottom, 16)
+                VStack(spacing: 10) {
+                    Image(systemName: "person.2.slash")
+                        .font(.system(size: 28))
+                        .foregroundColor(Theme.textFaint)
+                    Text(L10n.t("no_friends"))
+                        .font(.system(size: 15)).foregroundColor(Theme.textFaint)
+                    Text(L10n.t("search_or_invite"))
+                        .font(.system(size: 13)).foregroundColor(Theme.textFaint)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24).padding(.horizontal, 24)
             } else {
                 VStack(spacing: 10) {
                     ForEach(fm.friends, id: \.id) { user in

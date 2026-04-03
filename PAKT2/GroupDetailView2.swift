@@ -1,6 +1,4 @@
 import SwiftUI
-import DeviceActivity
-import Combine
 
 struct GroupDetailView: View {
     let groupId: UUID
@@ -52,8 +50,49 @@ struct GroupDetailView: View {
                 VStack(spacing: 0) {
                     detailHeader
 
+                    let _ = Log.d("[GROUP DETAIL] status=\(group.status) isPending=\(group.isPending) hasStarted=\(group.hasStarted) startDate=\(group.startDate) now=\(Date())")
                     if group.isPending {
                         pendingPaktView
+                    } else if !group.hasStarted {
+                        // Group is active but starts at midnight
+                        VStack(spacing: 24) {
+                            Spacer().frame(height: 40)
+                            Image(systemName: "moon.zzz.fill")
+                                .font(.system(size: 48))
+                                .foregroundColor(Theme.textFaint)
+                            Text("Starts at midnight")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundColor(Theme.text)
+                            Text("The challenge will begin at 00:00.\nEveryone's score starts fresh tomorrow.")
+                                .font(.system(size: 15))
+                                .foregroundColor(Theme.textMuted)
+                                .multilineTextAlignment(.center)
+                                .lineSpacing(4)
+
+                            // Members with -- scores
+                            VStack(spacing: 0) {
+                                ForEach(Array(group.members.enumerated()), id: \.element.id) { i, member in
+                                    HStack(spacing: 12) {
+                                        AvatarView(name: member.name, size: 40, color: Theme.textMuted,
+                                                   uid: member.uid, isMe: appState.isMe(member))
+                                            .environmentObject(appState)
+                                        Text(member.name)
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(Theme.text)
+                                        Spacer()
+                                        Text("--")
+                                            .font(.system(size: 18, weight: .bold))
+                                            .foregroundColor(Theme.textFaint)
+                                    }
+                                    .padding(.horizontal, 16).padding(.vertical, 12)
+                                    if i < group.members.count - 1 {
+                                        Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.leading, 68)
+                                    }
+                                }
+                            }
+                            .liquidGlass(cornerRadius: 14)
+                            .padding(.horizontal, 24)
+                        }
                     } else if !isSyncing {
                         challengeBanner
                         periodPicker
@@ -95,7 +134,7 @@ struct GroupDetailView: View {
             await loadChartScores()
 
             try? await Task.sleep(nanoseconds: 500_000_000)
-            if let g = groupOpt, g.daysLeft == 0 && !g.isFinished && !g.isPending {
+            if let g = groupOpt, g.isCompleted && !g.isFinished && !g.isPending {
                 showResult = true
             }
         }
@@ -162,7 +201,7 @@ struct GroupDetailView: View {
 
     @ViewBuilder
     private var challengeBanner: some View {
-        if group.daysLeft == 0 {
+        if group.isCompleted {
             Button(action: { showResult = true }) {
                 HStack(spacing: 12) {
                     Text("\u{1F3C1}")
@@ -202,11 +241,6 @@ struct GroupDetailView: View {
         .liquidGlass(cornerRadius: 10)
         .padding(.horizontal, 24)
         .padding(.bottom, 8)
-    }
-
-    @ViewBuilder
-    private var sinceStartBanner: some View {
-        EmptyView()
     }
 
     // MARK: - Ranking List (minimal)

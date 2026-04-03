@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 import PhotosUI
 import DeviceActivity
 
@@ -22,7 +21,7 @@ struct ProfileView: View {
     @State private var myAchievements: Set<String> = []
     @State private var showGroupDetail = false
     @State private var selectedGroupId: UUID? = nil
-    var goalMinutes: Int { 180 } // Fixed 3h goal
+    var goalMinutes: Int { Int(appState.goalHours * 60) }
 
     private func startProfileRefresh() {
         guard !isTimerRunning else { return }
@@ -165,7 +164,7 @@ struct ProfileView: View {
         }
         .onPreferenceChange(TodayMinutesKey.self) { minutes in
             guard minutes > 0 else { return }
-            print("[PAKT Profile] TodayMinutes received: \(minutes)")
+            Log.d("[PAKT Profile] TodayMinutes received: \(minutes)")
             let todayStr = ScreenTimeManager.dateFormatter.string(from: Date())
             UserDefaults.standard.set(minutes, forKey: UDKey.todayMinutes)
             UserDefaults.standard.set(todayStr, forKey: UDKey.todayDate)
@@ -234,40 +233,6 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Reload
-
-    private func reloadStats() {
-        ScreenTimeManager.shared.syncToBackend(appState: appState)
-    }
-
-    // MARK: - Medals
-
-    private func medalsSection(_ medals: [Medal]) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(text: L10n.t("medals"))
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
-                    ForEach(medals) { medal in
-                        VStack(spacing: 8) {
-                            Text("🏅")
-                                .font(.system(size: 36))
-                            Text(medal.groupName)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(Theme.text)
-                                .lineLimit(1)
-                            Text(formatST(medal.avgMinutes) + L10n.t("per_day"))
-                                .font(.system(size: 13))
-                                .foregroundColor(Theme.green)
-                        }
-                        .frame(width: 110)
-                        .padding(.vertical, 16)
-                        .liquidGlass(cornerRadius: 14)
-                    }
-                }
-            }
-        }
-    }
-
     // MARK: - Today (total + social side by side)
 
     private func colorForMinutes(_ minutes: Int, goal: Int) -> Color {
@@ -278,9 +243,9 @@ struct ProfileView: View {
     private var todayStats: some View {
         HStack(spacing: 0) {
             VStack(spacing: 6) {
-                Text(stManager.profileToday > 0 ? formatST(stManager.profileToday) : "--")
+                Text(stManager.profileToday > 0 ? formatTime(stManager.profileToday) : "--")
                     .font(.system(size: 42, weight: .bold))
-                    .foregroundColor(colorForMinutes(stManager.profileToday, goal: 180))
+                    .foregroundColor(colorForMinutes(stManager.profileToday, goal: goalMinutes))
                 Text(L10n.t("today").uppercased())
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(Theme.textFaint)
@@ -291,9 +256,9 @@ struct ProfileView: View {
             Rectangle().fill(Theme.separator).frame(width: 0.5, height: 48)
 
             VStack(spacing: 6) {
-                Text(stManager.categorySocial > 0 ? formatST(stManager.categorySocial) : "--")
+                Text(stManager.categorySocial > 0 ? formatTime(stManager.categorySocial) : "--")
                     .font(.system(size: 42, weight: .bold))
-                    .foregroundColor(colorForMinutes(stManager.categorySocial, goal: 120))
+                    .foregroundColor(colorForMinutes(stManager.categorySocial, goal: Int(appState.socialGoalHours * 60)))
                 Text(L10n.t("on_social_media").uppercased())
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(Theme.textFaint)
@@ -341,7 +306,7 @@ struct ProfileView: View {
 
     private func avgCell(minutes: Int, label: String) -> some View {
         VStack(spacing: 4) {
-            Text(minutes > 0 ? formatST(minutes) : "--")
+            Text(minutes > 0 ? formatTime(minutes) : "--")
                 .font(.system(size: 28, weight: .bold))
                 .foregroundColor(Theme.text)
             Text(label.uppercased())
@@ -365,7 +330,7 @@ struct ProfileView: View {
                     Text(day.label)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(Theme.text)
-                    Text(formatST(day.minutes))
+                    Text(formatTime(day.minutes))
                         .font(.system(size: 17, weight: .bold))
                         .foregroundColor(day.minutes > goal ? Theme.red : Theme.green)
                     Spacer()
@@ -399,7 +364,7 @@ struct ProfileView: View {
 
             HStack(spacing: 4) {
                 Rectangle().fill(Theme.textFaint).frame(height: 0.5)
-                Text("\(L10n.t("goal")) \(formatST(goal))")
+                Text("\(L10n.t("goal")) \(formatTime(goal))")
                     .font(.system(size: 12))
                     .foregroundColor(Theme.textFaint)
             }
@@ -410,13 +375,6 @@ struct ProfileView: View {
         .liquidGlass(cornerRadius: 16)
         .padding(.horizontal, 24)
         .padding(.top, 20)
-    }
-
-
-    // MARK: - Helpers
-
-    private func formatST(_ m: Int) -> String {
-        "\(m / 60)h\(String(format: "%02d", m % 60))"
     }
 
     // MARK: - Header

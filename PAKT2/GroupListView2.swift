@@ -1,5 +1,4 @@
 import SwiftUI
-import DeviceActivity
 
 struct GroupsListView: View {
     @EnvironmentObject var appState : AppState
@@ -24,8 +23,9 @@ struct GroupsListView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         RefreshControl(isRefreshing: $isRefreshing) {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                isRefreshing = false
+                            Task {
+                                await appState.refreshGroupsOnly()
+                                DispatchQueue.main.async { isRefreshing = false }
                             }
                         }
                         header
@@ -33,7 +33,6 @@ struct GroupsListView: View {
                             emptyState
                         } else {
                             groupsList
-                            createButton
                         }
                         Spacer().frame(height: 100)
                     }
@@ -72,30 +71,44 @@ struct GroupsListView: View {
                 .font(.system(size: 34, weight: .bold))
                 .foregroundColor(Theme.text)
             Spacer()
-            Button(action: { showNotifs = true }) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "bell")
-                        .font(.system(size: 18)).foregroundColor(Theme.textMuted)
+            HStack(spacing: 8) {
+                Button(action: { showCreate = true }) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .semibold)).foregroundColor(Theme.textMuted)
                         .frame(width: 40, height: 40).liquidGlass(cornerRadius: 10)
-                    if !invManager.pending.isEmpty {
-                        Circle().fill(Theme.red).frame(width: 10, height: 10).offset(x: 2, y: -2)
+                }
+                .accessibilityLabel("Create group")
+                Button(action: { showJoin = true }) {
+                    Image(systemName: "link")
+                        .font(.system(size: 16)).foregroundColor(Theme.textMuted)
+                        .frame(width: 40, height: 40).liquidGlass(cornerRadius: 10)
+                }
+                .accessibilityLabel("Join group")
+                Button(action: { showNotifs = true }) {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "bell")
+                            .font(.system(size: 16)).foregroundColor(Theme.textMuted)
+                            .frame(width: 40, height: 40).liquidGlass(cornerRadius: 10)
+                        if !invManager.pending.isEmpty {
+                            Circle().fill(Theme.red).frame(width: 10, height: 10).offset(x: 2, y: -2)
+                        }
                     }
                 }
-            }
-            .accessibilityLabel("Notifications")
-            Button(action: { withAnimation { selectedTab = 3 } }) {
-                ZStack {
-                    if let uiImage = appState.profileUIImage {
-                        Image(uiImage: uiImage).resizable().scaledToFill()
-                            .frame(width: 40, height: 40).clipShape(Circle())
-                    } else {
-                        Circle().fill(Theme.bgWarm).frame(width: 40, height: 40)
-                        Text(String(appState.userName.prefix(1)).uppercased())
-                            .font(.system(size: 15, weight: .bold)).foregroundColor(Theme.textMuted)
+                .accessibilityLabel("Notifications")
+                Button(action: { withAnimation { selectedTab = 3 } }) {
+                    ZStack {
+                        if let uiImage = appState.profileUIImage {
+                            Image(uiImage: uiImage).resizable().scaledToFill()
+                                .frame(width: 40, height: 40).clipShape(Circle())
+                        } else {
+                            Circle().fill(Theme.bgWarm).frame(width: 40, height: 40)
+                            Text(String(appState.userName.prefix(1)).uppercased())
+                                .font(.system(size: 15, weight: .bold)).foregroundColor(Theme.textMuted)
+                        }
                     }
                 }
+                .accessibilityLabel("Profile")
             }
-            .accessibilityLabel("Profile")
         }
         .padding(.horizontal, 24).padding(.top, 64).padding(.bottom, 28)
     }
@@ -148,8 +161,8 @@ struct GroupsListView: View {
     var groupsList: some View {
         let uid = appState.currentUID
         let pendingGroups  = appState.groups.filter { $0.status == .pending }
-        let activeGroups   = appState.groups.filter { $0.status == .active && $0.daysLeft > 0 }
-        let finishedGroups = appState.groups.filter { $0.status == .finished || ($0.status == .active && $0.daysLeft == 0) }
+        let activeGroups   = appState.groups.filter { $0.status == .active && !$0.isCompleted }
+        let finishedGroups = appState.groups.filter { $0.status == .finished || $0.isCompleted }
 
         return VStack(spacing: 12) {
 
@@ -285,6 +298,13 @@ struct GroupCard: View {
                                 .padding(.vertical, 3).padding(.horizontal, 8)
                                 .background(Theme.orange.opacity(0.08))
                                 .cornerRadius(6)
+                        } else if !group.hasStarted {
+                            Text("Starts at midnight")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(Theme.textMuted)
+                                .padding(.vertical, 3).padding(.horizontal, 8)
+                                .background(Theme.bgWarm)
+                                .cornerRadius(6)
                         }
                     }
                 }
@@ -298,12 +318,21 @@ struct GroupCard: View {
                             .font(.system(size: 12))
                             .foregroundColor(Theme.textFaint)
                     }
-                } else if group.daysLeft > 0 {
+                } else if !group.hasStarted {
+                    VStack(spacing: 2) {
+                        Image(systemName: "moon.zzz.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(Theme.textMuted)
+                        Text("00:00")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(Theme.textFaint)
+                    }
+                } else if !group.isCompleted {
                     VStack(spacing: 2) {
                         Text("\(group.daysLeft)")
                             .font(.system(size: 24, weight: .bold))
                             .foregroundColor(Theme.text)
-                        Text(L10n.t("days_remaining"))
+                        Text(L10n.t(group.daysLeft == 0 ? "last_day" : "days_remaining"))
                             .font(.system(size: 12))
                             .foregroundColor(Theme.textFaint)
                     }
@@ -316,23 +345,34 @@ struct GroupCard: View {
 
             // Members row
             HStack(spacing: -8) {
-                ForEach(Array(group.members.prefix(6).enumerated()), id: \.offset) { i, member in
-                    AvatarView(name: member.name, size: 32, color: Theme.textMuted,
-                               uid: member.uid, isMe: appState.isMe(member))
-                        .environmentObject(appState)
-                        .overlay(
-                            Circle()
-                                .stroke(.ultraThinMaterial, lineWidth: 2)
-                        )
-                        .zIndex(Double(6 - i))
+                if let groupPhoto = appState.loadGroupImage(for: group.id) {
+                    Image(uiImage: groupPhoto)
+                        .resizable().scaledToFill()
+                        .frame(width: 36, height: 36)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .padding(.trailing, 8)
+                } else {
+                    ForEach(Array(group.members.prefix(6).enumerated()), id: \.offset) { i, member in
+                        AvatarView(name: member.name, size: 32, color: Theme.textMuted,
+                                   uid: member.uid, isMe: appState.isMe(member))
+                            .environmentObject(appState)
+                            .overlay(
+                                Circle()
+                                    .stroke(.ultraThinMaterial, lineWidth: 2)
+                            )
+                            .zIndex(Double(6 - i))
+                    }
                 }
-                if group.members.count > 6 {
+                if appState.loadGroupImage(for: group.id) == nil && group.members.count > 6 {
                     Text("+\(group.members.count - 6)")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(Theme.textFaint)
                         .padding(.leading, 14)
                 }
                 Spacer()
+                Text("\(group.members.count)")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Theme.textFaint)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(Theme.textFaint)

@@ -51,7 +51,7 @@ struct WSChatMessage: Decodable {
     let id: String
     let fromId: String
     let fromName: String?
-    let toId: String
+    let toId: String?
     let groupId: String?
     let text: String?
     let activityTitle: String?
@@ -104,6 +104,26 @@ class WebSocketManager: ObservableObject {
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
+        d.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let str = try container.decode(String.self)
+            let f1 = ISO8601DateFormatter()
+            f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = f1.date(from: str) { return date }
+            let f2 = ISO8601DateFormatter()
+            f2.formatOptions = [.withInternetDateTime]
+            if let date = f2.date(from: str) { return date }
+            if str.contains(".") {
+                let parts = str.split(separator: ".")
+                if parts.count == 2 {
+                    let frac = parts[1].prefix(while: { $0.isNumber })
+                    let suffix = parts[1].dropFirst(frac.count)
+                    let truncated = "\(parts[0]).\(frac.prefix(3))\(suffix)"
+                    if let date = f1.date(from: truncated) { return date }
+                }
+            }
+            return Date()
+        }
         return d
     }()
 
@@ -115,12 +135,16 @@ class WebSocketManager: ObservableObject {
     private var lastConnectAttempt: Date = .distantPast
 
     func connect() {
-        guard let token = AuthManager.shared.accessToken else { return }
+        guard let token = AuthManager.shared.accessToken else {
+            Log.d("[WS] No token, skipping connect")
+            return
+        }
         guard !isConnecting else { return }
 
-        // Cooldown: pas plus d'une connexion toutes les 10 secondes
-        guard Date().timeIntervalSince(lastConnectAttempt) > 10 else { return }
+        // Cooldown: pas plus d'une connexion toutes les 5 secondes
+        guard Date().timeIntervalSince(lastConnectAttempt) > 5 else { return }
         lastConnectAttempt = Date()
+        reconnectAttempts = 0  // Reset on explicit connect (app foreground)
 
         isIntentionalDisconnect = false
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
@@ -203,6 +227,7 @@ class WebSocketManager: ObservableObject {
             case .success(let message):
                 self.isConnecting = false
                 if !self.isConnected {
+                    Log.d("[WS] Connected")
                     DispatchQueue.main.async { self.isConnected = true }
                 }
                 switch message {
@@ -218,7 +243,8 @@ class WebSocketManager: ObservableObject {
                 // Continue reading
                 self.receiveMessage()
 
-            case .failure:
+            case .failure(let error):
+                Log.d("[WS] Connection failed: \(error.localizedDescription)")
                 self.isConnecting = false
                 self.webSocketTask = nil
                 DispatchQueue.main.async { self.isConnected = false }
@@ -234,7 +260,11 @@ class WebSocketManager: ObservableObject {
             let event: String
         }
 
-        guard let envelope = try? decoder.decode(WSEnvelope.self, from: data) else { return }
+        guard let envelope = try? decoder.decode(WSEnvelope.self, from: data) else {
+            Log.d("[WS] Failed to decode envelope: \(text.prefix(100))")
+            return
+        }
+        Log.d("[WS] Event received: \(envelope.event)")
 
         struct WSPayload<T: Decodable>: Decodable {
             let event: String
@@ -304,14 +334,12 @@ class WebSocketManager: ObservableObject {
 
     private func attemptReconnect() {
         guard !isIntentionalDisconnect else { return }
-        // Stop trying after 3 attempts — the server may be down
-        guard reconnectAttempts < 3 else {
-            print("[WS] Max reconnect attempts reached, giving up")
-            return
-        }
 
         reconnectAttempts += 1
-        let delay = min(pow(2.0, Double(reconnectAttempts)), maxReconnectDelay)
+        // Exponential backoff up to 30s, then slow-poll every 60s
+        let delay = reconnectAttempts > 10
+            ? 60.0
+            : min(pow(2.0, Double(reconnectAttempts)), maxReconnectDelay)
 
         // Clean up old task before reconnecting
         webSocketTask = nil

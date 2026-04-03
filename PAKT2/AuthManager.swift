@@ -38,7 +38,7 @@ class AuthManager: ObservableObject {
            let user = try? JSONDecoder().decode(AppUser.self, from: userData) {
             self.currentUser = user
             self.isLoggedIn = true
-            print("[AUTH] Restored cached user: \(user.id) \(user.firstName)")
+            Log.d("[AUTH] Restored cached user: \(user.id) \(user.firstName)")
         }
 
         if refreshTokenValue != nil {
@@ -48,7 +48,7 @@ class AuthManager: ObservableObject {
                     await loadCurrentUser()
                 } else if self.currentUser == nil {
                     // Refresh failed AND no cached user → session is dead, force re-login
-                    print("[AUTH] Refresh failed with no cached user — forcing sign out")
+                    Log.d("[AUTH] Refresh failed with no cached user — forcing sign out")
                     await MainActor.run {
                         AppState.shared.signOut()
                     }
@@ -61,9 +61,9 @@ class AuthManager: ObservableObject {
     // MARK: - Sign Up
 
     func signUp(firstName: String, email: String, password: String) async {
-        guard !isLoading else { print("[AUTH] signUp blocked — already loading"); return }
+        guard !isLoading else { Log.d("[AUTH] signUp blocked — already loading"); return }
         await MainActor.run { isLoading = true; errorMessage = nil }
-        print("[AUTH] signUp starting for \(email)")
+        Log.d("[AUTH] signUp starting for \(email)")
 
         do {
             let capitalized = firstName.prefix(1).uppercased() + firstName.dropFirst()
@@ -72,7 +72,7 @@ class AuthManager: ObservableObject {
                 email: email,
                 password: password
             )
-            print("[AUTH] signUp success: \(response.user.id)")
+            Log.d("[AUTH] signUp success: \(response.user.id)")
             saveTokens(response)
             let user = response.user.toAppUser()
             shareUserInfoWithExtension(user)
@@ -97,13 +97,13 @@ class AuthManager: ObservableObject {
     // MARK: - Sign In
 
     func signIn(email: String, password: String) async {
-        guard !isLoading else { print("[AUTH] signIn blocked — already loading"); return }
+        guard !isLoading else { Log.d("[AUTH] signIn blocked — already loading"); return }
         await MainActor.run { isLoading = true; errorMessage = nil }
-        print("[AUTH] signIn starting for \(email)")
+        Log.d("[AUTH] signIn starting for \(email)")
 
         do {
             let response = try await APIClient.shared.signIn(email: email, password: password)
-            print("[AUTH] signIn success: \(response.user.id)")
+            Log.d("[AUTH] signIn success: \(response.user.id)")
             saveTokens(response)
             let user = response.user.toAppUser()
             shareUserInfoWithExtension(user)
@@ -137,7 +137,7 @@ class AuthManager: ObservableObject {
         let delegate = AppleSignInDelegate2 { [weak self] authorization in
             Task { await self?.handleAppleSignIn(authorization: authorization) }
         } onError: { [weak self] error in
-            print("[AUTH] Apple Sign In error: \(error)")
+            Log.d("[AUTH] Apple Sign In error: \(error)")
             Task { @MainActor in
                 self?.errorMessage = error.localizedDescription
                 self?.isLoading = false
@@ -221,7 +221,7 @@ class AuthManager: ObservableObject {
                 await MainActor.run { self.errorMessage = L10n.t("email_not_verified") }
             }
         } catch {
-            print("[AUTH] verifyEmail error: \(error)")
+            Log.d("[AUTH] verifyEmail error: \(error)")
             await MainActor.run { self.errorMessage = error.localizedDescription }
         }
     }
@@ -230,17 +230,22 @@ class AuthManager: ObservableObject {
         try? await APIClient.shared.resendVerification()
     }
 
-    /// Compatibility: old flow checked email verification status.
-    /// New flow uses 6-digit code — this is a no-op placeholder.
-    func checkEmailVerified() async {
-        // With the new backend, verification is done via verifyEmail(code:)
-        // This method exists for compatibility with OnboardingView
-    }
-
     // MARK: - Token Management
 
+    private var isRefreshing = false
+    private var refreshResult: Bool? = nil
+
     func refreshTokens() async -> Bool {
-        guard let rt = refreshTokenValue else { return false }
+        // Prevent concurrent refresh calls — wait for the in-flight one
+        if isRefreshing {
+            // Spin-wait for the ongoing refresh to complete
+            while isRefreshing { try? await Task.sleep(nanoseconds: 50_000_000) }
+            return refreshResult ?? false
+        }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
+        guard let rt = refreshTokenValue else { refreshResult = false; return false }
         do {
             let response = try await APIClient.shared.refreshToken(rt)
             accessToken = response.accessToken
@@ -249,8 +254,10 @@ class AuthManager: ObservableObject {
             keychainWrite(key: "pakt_access_token", value: response.accessToken)
             keychainWrite(key: "pakt_refresh_token", value: response.refreshToken)
             keychainWrite(key: "pakt_extension_token", value: response.extensionToken)
+            refreshResult = true
             return true
         } catch {
+            refreshResult = false
             return false
         }
     }
@@ -289,11 +296,11 @@ class AuthManager: ObservableObject {
     // MARK: - User Data
 
     func loadCurrentUser() async {
-        print("[AUTH] loadCurrentUser starting...")
+        Log.d("[AUTH] loadCurrentUser starting...")
         do {
             let apiUser = try await APIClient.shared.getMe()
             let user = apiUser.toAppUser()
-            print("[AUTH] loadCurrentUser success: \(user.id) \(user.firstName)")
+            Log.d("[AUTH] loadCurrentUser success: \(user.id) \(user.firstName)")
             shareUserInfoWithExtension(user)
             // Cache user locally for offline-first
             if let data = try? JSONEncoder().encode(user) {
@@ -304,7 +311,7 @@ class AuthManager: ObservableObject {
                 self.isLoggedIn = true
             }
         } catch {
-            print("[AUTH] loadCurrentUser FAILED: \(error)")
+            Log.d("[AUTH] loadCurrentUser FAILED: \(error)")
             // Don't clear currentUser — keep cached version for offline use
         }
     }
@@ -334,10 +341,25 @@ class AuthManager: ObservableObject {
     }
 
     func fetchProfilePhoto(uid: String) async -> UIImage? {
-        guard let response = try? await APIClient.shared.getPhoto(uid: uid) else { return nil }
-        guard !response.photoBase64.isEmpty,
-              let data = Data(base64Encoded: response.photoBase64) else { return nil }
-        return UIImage(data: data)
+        do {
+            let response = try await APIClient.shared.getPhoto(uid: uid)
+            guard !response.photoBase64.isEmpty else {
+                Log.d("[Photo] Empty photoBase64 for uid=\(uid.prefix(8))")
+                return nil
+            }
+            guard let data = Data(base64Encoded: response.photoBase64) else {
+                Log.d("[Photo] Base64 decode failed for uid=\(uid.prefix(8))")
+                return nil
+            }
+            guard let img = UIImage(data: data) else {
+                Log.d("[Photo] UIImage decode failed for uid=\(uid.prefix(8))")
+                return nil
+            }
+            return img
+        } catch {
+            Log.d("[Photo] Fetch failed for uid=\(uid.prefix(8)): \(error.localizedDescription)")
+            return nil
+        }
     }
 
     // MARK: - Search
@@ -406,22 +428,20 @@ class AuthManager: ObservableObject {
     // MARK: - Keychain
 
     func keychainWrite(key: String, value: String) {
-        let data = value.data(using: .utf8)!
-        let oldQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key
-        ]
-        SecItemDelete(oldQuery as CFDictionary)
-        let groupQuery: [String: Any] = [
+        guard let data = value.data(using: .utf8) else { return }
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecAttrAccessGroup as String: keychainGroup
         ]
-        SecItemDelete(groupQuery as CFDictionary)
-        var add = groupQuery
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        add[kSecValueData as String] = data
-        SecItemAdd(add as CFDictionary, nil)
+        let attrs: [String: Any] = [kSecValueData as String: data]
+        let status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+        if status == errSecItemNotFound {
+            var newItem = query
+            newItem[kSecValueData as String] = data
+            newItem[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            SecItemAdd(newItem as CFDictionary, nil)
+        }
     }
 
     private func keychainRead(key: String) -> String? {

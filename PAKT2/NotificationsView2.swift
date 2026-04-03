@@ -86,7 +86,7 @@ final class InvitationManager: NSObject, ObservableObject {
                     }
                 }
             } catch {
-                print("[InvitationManager] fetchInvitations error: \(error)")
+                Log.d("[InvitationManager] fetchInvitations error: \(error)")
             }
         }
     }
@@ -173,7 +173,7 @@ struct NotificationsView: View {
                     if invManager.pending.isEmpty {
                         emptyState
                     } else {
-                        SectionTitle(text: "pending invitations")
+                        SectionTitle(text: L10n.t("pending_invitations"))
                         VStack(spacing: 12) {
                             ForEach(invManager.pending) { inv in invitationCard(inv) }
                         }
@@ -188,15 +188,18 @@ struct NotificationsView: View {
     }
 
     var emptyState: some View {
-        VStack(spacing: 16) {
-            Text("—")
-                .font(.system(size: 40, weight: .bold))
+        VStack(spacing: 14) {
+            Image(systemName: "bell.slash")
+                .font(.system(size: 36))
                 .foregroundColor(Theme.textFaint)
             Text(L10n.t("no_notifs"))
-                .font(.system(size: 24, weight: .bold))
+                .font(.system(size: 20, weight: .bold))
                 .foregroundColor(Theme.text)
+            Text(L10n.t("all_caught_up"))
+                .font(.system(size: 15))
+                .foregroundColor(Theme.textFaint)
         }
-        .padding(.top, 60).padding(.horizontal, 40)
+        .padding(.top, 80).padding(.horizontal, 40)
     }
 
     func invitationCard(_ inv: GroupInvitation) -> some View {

@@ -5,8 +5,16 @@ import Security
 class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
     private let defaults = UserDefaults(suiteName: "group.com.PAKT2")
+    // Keep in sync with AppConfig in SharedComponents2.swift
     private let keychainGroup = "9U5UZW39LQ.com.PAKT2"
     private let backendBaseURL = "https://pakt-api.fly.dev/v1"
+
+    private static let dateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+    private static let dayFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "EEE"; f.locale = Locale(identifier: "en_US"); return f
+    }()
 
     // MARK: - Interval lifecycle
 
@@ -27,12 +35,8 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         // These minutes belong to YESTERDAY
         let cal = Calendar.current
         let yesterday = cal.date(byAdding: .day, value: -1, to: Date()) ?? Date()
-        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
-        let yesterdayStr = df.string(from: yesterday)
-        let yesterdayLabel: String = {
-            let f = DateFormatter(); f.dateFormat = "EEE"; f.locale = Locale(identifier: "en_US")
-            return f.string(from: yesterday)
-        }()
+        let yesterdayStr = Self.dateFmt.string(from: yesterday)
+        let yesterdayLabel = Self.dayFmt.string(from: yesterday)
 
         defaults?.set(totalMinutes, forKey: "st_yesterdayMinutes")
 
@@ -61,7 +65,6 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         }
 
         guard minutes > 0 else { return }
-        print("[PAKT Monitor] Threshold reached: \(minutes) min")
 
         // Écrire dans le Keychain pour que le main app puisse lire via loadProfileCache
         // (vital quand les DARs ne fonctionnent pas)
@@ -84,11 +87,7 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     // MARK: - Backend REST sync
 
     private func syncToBackend(minutes: Int, date: String) {
-        guard let token = keychainRead("pakt_extension_token") else {
-            print("[PAKT Monitor] No extension token in Keychain — can't sync")
-            return
-        }
-        print("[PAKT Monitor] Syncing \(minutes) min to backend...")
+        guard let token = keychainRead("pakt_extension_token") else { return }
 
         let body: [String: Any] = [
             "minutes": minutes,
@@ -101,16 +100,13 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = 5
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.httpBody = jsonData
 
-        // Fire and forget — we're in an extension, use a semaphore to wait
-        let semaphore = DispatchSemaphore(value: 0)
-        URLSession.shared.dataTask(with: request) { _, _, _ in
-            semaphore.signal()
-        }.resume()
-        _ = semaphore.wait(timeout: .now() + 10)
+        // Fire and forget — no semaphore to avoid OS killing the extension
+        URLSession.shared.dataTask(with: request) { _, _, _ in }.resume()
     }
 
     // MARK: - Keychain
@@ -149,14 +145,7 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     // MARK: - Helpers
 
     private var todayDateString: String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: Date())
-    }
-
-    private var dayLabel: String {
-        let f = DateFormatter(); f.dateFormat = "EEE"
-        f.locale = Locale(identifier: "en_US")
-        return f.string(from: Date())
+        Self.dateFmt.string(from: Date())
     }
 
     private func loadHistory() -> [DayEntryMonitor] {

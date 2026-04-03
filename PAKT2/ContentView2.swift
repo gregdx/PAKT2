@@ -1,6 +1,5 @@
 import SwiftUI
 import DeviceActivity
-import Network
 
 struct ContentView: View {
     @StateObject private var appState = AppState.shared
@@ -27,10 +26,10 @@ struct ContentView: View {
         .id("\(isDarkMode)_\(appLanguage)")
         .onReceive(AuthManager.shared.$currentUser) { user in
             guard let user, appState.isOnboarded else { return }
-            print("[PAKT] currentUser loaded: \(user.id) — triggering sync")
+            Log.d("[PAKT] currentUser loaded: \(user.id) — triggering sync")
             Task {
                 await appState.syncFromBackend()
-                print("[PAKT] Auth-triggered sync done. Groups: \(appState.groups.count)")
+                Log.d("[PAKT] Auth-triggered sync done. Groups: \(appState.groups.count)")
                 InvitationManager.shared.startListening()
                 FriendManager.shared.startListening()
                 WebSocketManager.shared.connect()
@@ -47,12 +46,8 @@ struct ContentView: View {
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
                 withAnimation(.easeOut(duration: 0.5)) { showLaunch = false }
-                // Demander l'autorisation si pas encore fait (requis pour que les extensions fonctionnent)
-                // Ne pas redemander si déjà autorisé (évite de perturber les réglages Screen Time)
                 if !stManager.isAuthorized {
                     Task { await stManager.requestAuthorization() }
-                } else {
-                    stManager.startBackgroundMonitoring()
                 }
             }
         }
@@ -61,7 +56,6 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { phase in
             if phase == .active {
-                darRefreshID += 1
                 stManager.refreshAuthorizationStatus()
                 if stManager.isAuthorized {
                     stManager.startBackgroundMonitoring()
@@ -84,8 +78,6 @@ struct ContentView: View {
             }
         }
     }
-
-    @State private var darRefreshID = 0
 
     private var todayFilter: DeviceActivityFilter {
         DeviceActivityFilter(
@@ -151,11 +143,6 @@ struct ContentView: View {
             )
         }
         .ignoresSafeArea(edges: .bottom)
-        .onAppear {
-            AppIconCache.shared.preloadAll()
-            print("[PAKT] stManager.isAuthorized = \(stManager.isAuthorized)")
-            print("[PAKT] profileToday = \(stManager.profileToday)")
-        }
         .onPreferenceChange(TodayMinutesKey.self) { minutes in
             guard minutes > 0 else { return }
             let todayStr = ScreenTimeManager.dateFormatter.string(from: Date())
@@ -184,33 +171,34 @@ struct ContentView: View {
             stManager.updateProfileHistory(raw)
         }
         .onAppear {
+            AppIconCache.shared.preloadAll()
             startPeriodicSync()
             Task { _ = await NotificationService.shared.requestPermission() }
 
             // Refresh token THEN start everything
             Task {
                 let hasToken = AuthManager.shared.accessToken != nil
-                print("[PAKT] Has token before refresh: \(hasToken)")
+                Log.d("[PAKT] Has token before refresh: \(hasToken)")
 
                 if hasToken {
                     let refreshed = await AuthManager.shared.refreshTokens()
-                    print("[PAKT] Token refresh: \(refreshed)")
+                    Log.d("[PAKT] Token refresh: \(refreshed)")
                 } else {
-                    print("[PAKT] No token yet — skipping refresh (fresh sign in?)")
+                    Log.d("[PAKT] No token yet — skipping refresh (fresh sign in?)")
                 }
 
                 guard AuthManager.shared.accessToken != nil else {
-                    print("[PAKT] No valid token — skipping network init")
+                    Log.d("[PAKT] No valid token — skipping network init")
                     return
                 }
 
-                print("[PAKT] Starting network init...")
+                Log.d("[PAKT] Starting network init...")
                 InvitationManager.shared.startListening()
                 FriendManager.shared.startListening()
 
-                print("[PAKT] Syncing from backend...")
+                Log.d("[PAKT] Syncing from backend...")
                 await appState.syncFromBackend()
-                print("[PAKT] Sync done. Groups: \(appState.groups.count)")
+                Log.d("[PAKT] Sync done. Groups: \(appState.groups.count)")
 
                 WebSocketManager.shared.connect()
                 WebSocketManager.shared.subscribe("scores")

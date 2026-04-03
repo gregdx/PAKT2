@@ -61,7 +61,22 @@ struct EditGroupView: View {
                             .onChange(of: selectedPhoto) { newItem in
                                 Task {
                                     if let data = try? await newItem?.loadTransferable(type: Data.self),
-                                       let img  = UIImage(data: data) { groupImage = img }
+                                       let img  = UIImage(data: data) {
+                                        groupImage = img
+                                    }
+                                }
+                            }
+                        } else {
+                            // Non-creator: show photo read-only
+                            ZStack {
+                                if let img = groupImage {
+                                    Image(uiImage: img).resizable().scaledToFill()
+                                        .frame(width: 80, height: 80)
+                                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                                } else {
+                                    RoundedRectangle(cornerRadius: 20).fill(Theme.bgWarm).frame(width: 80, height: 80)
+                                    Text(String(name.prefix(1)).uppercased())
+                                        .font(.system(size: 32, weight: .bold)).foregroundColor(Theme.textMuted)
                                 }
                             }
                         }
@@ -78,6 +93,9 @@ struct EditGroupView: View {
                             }
                             .padding(.horizontal, 28)
                         }
+
+                        // MARK: - Members list
+                        membersSection
 
                         // Challenge settings (locked)
                         VStack(alignment: .leading, spacing: 12) {
@@ -141,9 +159,9 @@ struct EditGroupView: View {
                                 VStack(spacing: 0) {
                                     ForEach(Array(inviteable.enumerated()), id: \.element.id) { i, friend in
                                         HStack(spacing: 12) {
-                                            Circle().fill(Theme.bgWarm).frame(width: 40, height: 40)
-                                                .overlay(Text(String(friend.firstName.prefix(1)).uppercased())
-                                                    .font(.system(size: 16, weight: .bold)).foregroundColor(Theme.textMuted))
+                                            AvatarView(name: friend.firstName, size: 40, color: Theme.textMuted,
+                                                       uid: friend.id, isMe: false)
+                                                .environmentObject(appState)
                                             Text(friend.firstName)
                                                 .font(.system(size: 17, weight: .medium)).foregroundColor(Theme.text)
                                             Spacer()
@@ -186,18 +204,31 @@ struct EditGroupView: View {
                             }
                         }
 
-                        // Actions — only for pending groups (can't leave an active pakt)
-                        if group.isPending && isCreator {
-                            Button(action: { showDelete = true }) {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "trash").font(.system(size: 16))
-                                    Text(L10n.t("delete_group")).font(.system(size: 16))
+                        // Actions
+                        VStack(spacing: 12) {
+                            if group.isPending && isCreator {
+                                Button(action: { showDelete = true }) {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "trash").font(.system(size: 16))
+                                        Text(L10n.t("delete_group")).font(.system(size: 16))
+                                    }
+                                    .foregroundColor(Theme.red).frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16).background(Theme.red.opacity(0.06)).cornerRadius(14)
                                 }
-                                .foregroundColor(Theme.red).frame(maxWidth: .infinity)
-                                .padding(.vertical, 16).background(Theme.red.opacity(0.06)).cornerRadius(14)
                             }
-                            .padding(.horizontal, 28)
+
+                            if !isCreator {
+                                Button(action: { showLeave = true }) {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "rectangle.portrait.and.arrow.right").font(.system(size: 16))
+                                        Text(L10n.t("leave_group")).font(.system(size: 16))
+                                    }
+                                    .foregroundColor(Theme.red).frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16).background(Theme.red.opacity(0.06)).cornerRadius(14)
+                                }
+                            }
                         }
+                        .padding(.horizontal, 28)
                     }
                     .padding(.bottom, 32)
                 }
@@ -212,8 +243,8 @@ struct EditGroupView: View {
             }
         }
         .onAppear {
-            name       = group.name
-            // Group photos removed
+            name = group.name
+            groupImage = appState.loadGroupImage(for: group.id)
         }
         .confirmationDialog("Delete \"\(group.name)\"?", isPresented: $showDelete, titleVisibility: .visible) {
             Button(L10n.t("delete_group"), role: .destructive) { appState.deleteGroup(group); dismiss() }
@@ -223,6 +254,69 @@ struct EditGroupView: View {
             Button(L10n.t("leave_group"), role: .destructive) { appState.leaveGroup(group); dismiss() }
             Button(L10n.t("cancel"), role: .cancel) {}
         } message: { Text(L10n.t("leave_group_warn")) }
+    }
+
+    // MARK: - Members section
+
+    private var membersSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("MEMBERS")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Theme.textFaint).tracking(1.6)
+                Spacer()
+                Text("\(group.members.count)")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Theme.textFaint)
+            }
+            .padding(.horizontal, 28)
+
+            VStack(spacing: 0) {
+                ForEach(Array(group.members.enumerated()), id: \.element.id) { i, member in
+                    HStack(spacing: 12) {
+                        AvatarView(name: member.name, size: 40, color: Theme.textMuted,
+                                   uid: member.uid, isMe: appState.isMe(member))
+                            .environmentObject(appState)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(member.name)
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(Theme.text)
+                                if member.uid == group.creatorId {
+                                    Text("Admin")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(Theme.green)
+                                        .padding(.horizontal, 6).padding(.vertical, 2)
+                                        .background(Theme.green.opacity(0.1))
+                                        .cornerRadius(4)
+                                }
+                                if appState.isMe(member) {
+                                    Text("You")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(Theme.textFaint)
+                                        .padding(.horizontal, 6).padding(.vertical, 2)
+                                        .background(Theme.bgWarm)
+                                        .cornerRadius(4)
+                                }
+                            }
+                            Text(formatTime(member.todayMinutes) + " today")
+                                .font(.system(size: 13))
+                                .foregroundColor(Theme.textFaint)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+
+                    if i < group.members.count - 1 {
+                        Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.leading, 68)
+                    }
+                }
+            }
+            .liquidGlass(cornerRadius: 12)
+            .padding(.horizontal, 28)
+        }
     }
 
     func lockedRow(label: String, value: String) -> some View {
@@ -237,6 +331,9 @@ struct EditGroupView: View {
 
     func saveChanges() {
         var updated = group; updated.name = name
+        if let img = groupImage {
+            appState.saveGroupImage(img, for: group.id)
+        }
         appState.updateGroup(updated)
         withAnimation { saved = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { dismiss() }

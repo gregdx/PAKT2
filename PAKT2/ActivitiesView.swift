@@ -53,6 +53,28 @@ struct ChatMessage: Identifiable, Codable {
         guard let r = response else { return nil }
         return ProposalResponse(rawValue: r)
     }
+
+    // Handle missing keys from backend (e.g. to_id omitted for group messages)
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        fromId = try c.decode(String.self, forKey: .fromId)
+        fromName = try c.decodeIfPresent(String.self, forKey: .fromName) ?? ""
+        toId = try c.decodeIfPresent(String.self, forKey: .toId) ?? ""
+        groupId = try c.decodeIfPresent(String.self, forKey: .groupId)
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        text = try c.decodeIfPresent(String.self, forKey: .text)
+        activityTitle = try c.decodeIfPresent(String.self, forKey: .activityTitle)
+        activityEmoji = try c.decodeIfPresent(String.self, forKey: .activityEmoji)
+        response = try c.decodeIfPresent(String.self, forKey: .response)
+    }
+
+    // Manual init for creating messages locally
+    init(id: String = UUID().uuidString, fromId: String, fromName: String, toId: String = "", groupId: String? = nil, createdAt: Date = Date(), text: String? = nil, activityTitle: String? = nil, activityEmoji: String? = nil, response: String? = nil) {
+        self.id = id; self.fromId = fromId; self.fromName = fromName; self.toId = toId
+        self.groupId = groupId; self.createdAt = createdAt; self.text = text
+        self.activityTitle = activityTitle; self.activityEmoji = activityEmoji; self.response = response
+    }
 }
 
 // MARK: - Manager
@@ -63,14 +85,24 @@ final class ActivityManager: ObservableObject {
     @Published var messages: [ChatMessage] = []
     @Published var readReceipts: [String: [APIClient.ChatReadReceipt]] = [:]  // groupId/peerId → receipts
 
+    // Local-only state for delete/archive
+    @Published var deletedMessageIds: Set<String> = []      // "delete for me"
+    @Published var archivedPeerIds: Set<String> = []         // archived conversations
+    @Published var deletedPeerIds: Set<String> = []          // deleted conversations
+
     private let storageKey = "pakt_chat_messages"
+    private let deletedMsgKey = "pakt_deleted_msg_ids"
+    private let archivedKey = "pakt_archived_peers"
+    private let deletedPeersKey = "pakt_deleted_peers"
+    private let lastOpenedKey = "pakt_last_opened"
     private var cancellables = Set<AnyCancellable>()
-    private var needsSave = false
+    var lastOpenedAt: [String: Date] = [:]  // peerUid → last time conversation was opened
 
     var myUid: String { AuthManager.shared.currentUser?.id ?? "" }
 
     init() {
         loadLocal()
+        loadLocalState()
         listenWebSocket()
         // Debounced save — max once per 2 seconds
         $messages
@@ -84,8 +116,13 @@ final class ActivityManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] ws in
                 guard let self else { return }
-                guard !self.messages.contains(where: { $0.id == ws.id }) else { return }
-                // Resolve name: WebSocket payload > friends list > existing messages > truncated ID
+                // Skip if we already have this message (by server ID)
+                if self.messages.contains(where: { $0.id == ws.id }) {
+                    Log.d("[PAKT Chat] WS msg \(ws.id.prefix(8)) already exists, skipping")
+                    return
+                }
+
+                Log.d("[PAKT Chat] WS msg \(ws.id.prefix(8)) from \(ws.fromId.prefix(8)) — adding to messages")
                 let resolvedName = ws.fromName
                     ?? FriendManager.shared.friends.first(where: { $0.id == ws.fromId })?.firstName
                     ?? self.messages.last(where: { $0.fromId == ws.fromId })?.fromName
@@ -94,7 +131,7 @@ final class ActivityManager: ObservableObject {
                     id: ws.id,
                     fromId: ws.fromId,
                     fromName: resolvedName,
-                    toId: ws.toId,
+                    toId: ws.toId ?? "",
                     groupId: ws.groupId,
                     createdAt: ws.createdAt ?? Date(),
                     text: ws.text,
@@ -102,6 +139,12 @@ final class ActivityManager: ObservableObject {
                     activityEmoji: ws.activityEmoji
                 )
                 self.messages.append(msg)
+                // Un-delete/un-archive conversation when new message arrives
+                let peerUid = msg.isFromMe ? msg.toId : msg.fromId
+                if !peerUid.isEmpty && msg.groupId == nil {
+                    self.deletedPeerIds.remove(peerUid)
+                }
+                self.objectWillChange.send()
             }
             .store(in: &cancellables)
 
@@ -119,8 +162,15 @@ final class ActivityManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] ws in
                 guard let self else { return }
-                let key = ws.groupId ?? ws.peerId ?? ""
+                // For groups: key = groupId. For DMs: key = the userId who read (the friend).
+                let key: String
+                if let gid = ws.groupId, !gid.isEmpty {
+                    key = gid
+                } else {
+                    key = ws.userId  // The friend who read my message
+                }
                 guard !key.isEmpty else { return }
+                Log.d("[SEEN] WS chat_read: userId=\(ws.userId.prefix(8)) key=\(key.prefix(8)) msgId=\(ws.messageId.prefix(8))")
                 let receipt = APIClient.ChatReadReceipt(userId: ws.userId, userName: ws.userName ?? "", lastReadMessageId: ws.messageId)
                 var current = self.readReceipts[key] ?? []
                 if let i = current.firstIndex(where: { $0.userId == ws.userId }) {
@@ -129,6 +179,7 @@ final class ActivityManager: ObservableObject {
                     current.append(receipt)
                 }
                 self.readReceipts[key] = current
+                self.objectWillChange.send()
             }
             .store(in: &cancellables)
     }
@@ -137,7 +188,19 @@ final class ActivityManager: ObservableObject {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([ChatMessage].self, from: data)
         else { return }
-        messages = decoded
+        // Deduplicate: keep only one message per (fromId, toId/groupId, text, createdAt rounded to second)
+        var seen = Set<String>()
+        var deduped: [ChatMessage] = []
+        for msg in decoded {
+            let key = "\(msg.fromId)|\(msg.toId)|\(msg.groupId ?? "")|\(msg.text ?? msg.activityTitle ?? "")|\(Int(msg.createdAt.timeIntervalSince1970))"
+            if seen.insert(key).inserted {
+                deduped.append(msg)
+            }
+        }
+        if deduped.count < decoded.count {
+            Log.d("[PAKT Chat] Cleaned \(decoded.count - deduped.count) duplicate messages from local storage")
+        }
+        messages = deduped
     }
 
     private func saveLocal() {
@@ -145,71 +208,159 @@ final class ActivityManager: ObservableObject {
         UserDefaults.standard.set(data, forKey: storageKey)
     }
 
+    private func loadLocalState() {
+        if let ids = UserDefaults.standard.array(forKey: deletedMsgKey) as? [String] {
+            deletedMessageIds = Set(ids)
+        }
+        if let ids = UserDefaults.standard.array(forKey: archivedKey) as? [String] {
+            archivedPeerIds = Set(ids)
+        }
+        if let ids = UserDefaults.standard.array(forKey: deletedPeersKey) as? [String] {
+            deletedPeerIds = Set(ids)
+        }
+        if let dict = UserDefaults.standard.dictionary(forKey: lastOpenedKey) as? [String: Double] {
+            lastOpenedAt = dict.mapValues { Date(timeIntervalSince1970: $0) }
+        }
+    }
+
+    private func saveLocalState() {
+        UserDefaults.standard.set(Array(deletedMessageIds), forKey: deletedMsgKey)
+        UserDefaults.standard.set(Array(archivedPeerIds), forKey: archivedKey)
+        UserDefaults.standard.set(Array(deletedPeerIds), forKey: deletedPeersKey)
+        UserDefaults.standard.set(lastOpenedAt.mapValues { $0.timeIntervalSince1970 }, forKey: lastOpenedKey)
+    }
+
+    func markConversationOpened(_ peerUid: String) {
+        lastOpenedAt[peerUid] = Date()
+        saveLocalState()
+        objectWillChange.send()
+    }
+
+    func hasUnreadMessages(from peerUid: String) -> Bool {
+        let lastOpened = lastOpenedAt[peerUid] ?? .distantPast
+        // Check if there's any message FROM the friend AFTER lastOpened
+        return messages.contains { msg in
+            msg.fromId == peerUid && msg.toId == myUid && msg.groupId == nil
+            && !deletedMessageIds.contains(msg.id)
+            && msg.createdAt > lastOpened
+        }
+    }
+
+    // MARK: - Conversations
+
     func conversationUids() -> [String] {
         var seen = Set<String>()
         var result: [String] = []
         for m in messages.sorted(by: { $0.createdAt > $1.createdAt }) {
+            guard m.groupId == nil else { continue }
             let other = m.otherUid
-            if !other.isEmpty && seen.insert(other).inserted { result.append(other) }
+            if !other.isEmpty && !deletedPeerIds.contains(other) && seen.insert(other).inserted {
+                result.append(other)
+            }
         }
         return result
     }
 
+    func archivedConversationUids() -> [String] {
+        conversationUids().filter { archivedPeerIds.contains($0) }
+    }
+
+    func activeConversationUids() -> [String] {
+        conversationUids().filter { !archivedPeerIds.contains($0) }
+    }
+
     func messagesWithFriend(_ uid: String) -> [ChatMessage] {
-        messages.filter { $0.otherUid == uid }.sorted { $0.createdAt < $1.createdAt }
+        messages.filter { $0.groupId == nil && $0.otherUid == uid && !deletedMessageIds.contains($0.id) }
+            .sorted { $0.createdAt < $1.createdAt }
     }
 
     func lastMessage(with uid: String) -> ChatMessage? {
-        messages.filter { $0.otherUid == uid }.max { $0.createdAt < $1.createdAt }
+        messagesWithFriend(uid).last
     }
 
     func unreadCount(for uid: String) -> Int {
-        messages.filter { $0.toId == myUid && $0.fromId == uid && $0.isActivity && $0.response == nil }.count
+        // Only count activity proposals FROM friend with no response yet
+        messages.filter {
+            $0.toId == myUid && $0.fromId == uid && $0.groupId == nil
+            && $0.isActivity && $0.response == nil
+            && !deletedMessageIds.contains($0.id)
+        }.count
     }
+
+    // MARK: - Send
 
     func load() {
         Task {
-            if let list: [ChatMessage] = try? await APIClient.shared.listActivityProposals() {
+            if let serverList: [ChatMessage] = try? await APIClient.shared.listActivityProposals() {
                 await MainActor.run {
-                    // Merge: keep local messages not on server, add server messages not local
-                    var merged = self.messages
-                    for serverMsg in list {
-                        if !merged.contains(where: { $0.id == serverMsg.id }) {
-                            merged.append(serverMsg)
-                        } else if let i = merged.firstIndex(where: { $0.id == serverMsg.id }) {
-                            // Update response from server if local doesn't have it
-                            if merged[i].response == nil && serverMsg.response != nil {
-                                merged[i].response = serverMsg.response
-                            }
-                        }
+                    // Server is the source of truth — replace local with server data
+                    // but keep any local-only messages (sent but not yet confirmed)
+                    let serverIds = Set(serverList.map { $0.id })
+                    // Keep local messages that haven't been synced yet (UUID format, not on server)
+                    let localOnly = self.messages.filter { msg in
+                        msg.groupId == nil && !serverIds.contains(msg.id)
+                        && msg.fromId == self.myUid
+                        && msg.createdAt.timeIntervalSinceNow > -30  // sent <30s ago
                     }
-                    self.messages = merged.sorted { $0.createdAt < $1.createdAt }
+                    self.messages = self.messages.filter { $0.groupId != nil }  // keep group messages
+                    self.messages.append(contentsOf: serverList)
+                    self.messages.append(contentsOf: localOnly)
+                    self.messages.sort { $0.createdAt < $1.createdAt }
+                    self.objectWillChange.send()
                 }
             }
         }
     }
 
     func sendText(_ text: String, toFriendId: String) {
-        let msg = ChatMessage(fromId: myUid, fromName: AppState.shared.userName, toId: toFriendId, text: text)
+        let localId = UUID().uuidString
+        let msg = ChatMessage(id: localId, fromId: myUid, fromName: AppState.shared.userName, toId: toFriendId, text: text)
         messages.append(msg)
-        // Save immediately for instant feedback
+        archivedPeerIds.remove(toFriendId)
+        deletedPeerIds.remove(toFriendId)
+        saveLocalState()
         saveLocal()
         Task {
-            try? await APIClient.shared.sendChatMessage(text: text, toId: toFriendId)
+            do {
+                let server = try await APIClient.shared.sendChatMessage(text: text, toId: toFriendId)
+                await MainActor.run {
+                    if let idx = self.messages.firstIndex(where: { $0.id == localId }) {
+                        self.messages[idx].id = server.id
+                        if let date = server.createdAt { self.messages[idx].createdAt = date }
+                        Log.d("[PAKT Chat] Updated local ID \(localId.prefix(8)) → server ID \(server.id.prefix(8))")
+                    }
+                }
+            } catch {
+                Log.d("[PAKT Chat] sendChatMessage failed: \(error)")
+            }
         }
     }
 
     func sendActivity(_ activity: Activity, toFriendId: String) {
+        let localId = UUID().uuidString
         let msg = ChatMessage(
-            fromId: myUid, fromName: AppState.shared.userName, toId: toFriendId,
+            id: localId, fromId: myUid, fromName: AppState.shared.userName, toId: toFriendId,
             activityTitle: activity.title, activityEmoji: activity.emoji
         )
         messages.append(msg)
+        archivedPeerIds.remove(toFriendId)
+        deletedPeerIds.remove(toFriendId)
+        saveLocalState()
         saveLocal()
         Task {
-            try? await APIClient.shared.sendActivityProposal(
-                activityTitle: activity.title, activityEmoji: activity.emoji, toId: toFriendId
-            )
+            do {
+                let server = try await APIClient.shared.sendActivityProposal(
+                    activityTitle: activity.title, activityEmoji: activity.emoji, toId: toFriendId
+                )
+                await MainActor.run {
+                    if let idx = self.messages.firstIndex(where: { $0.id == localId }) {
+                        self.messages[idx].id = server.id
+                        if let date = server.createdAt { self.messages[idx].createdAt = date }
+                    }
+                }
+            } catch {
+                Log.d("[PAKT Chat] sendActivity failed: \(error)")
+            }
         }
     }
 
@@ -222,53 +373,114 @@ final class ActivityManager: ObservableObject {
         }
     }
 
+    // MARK: - Delete / Archive
+
+    func deleteMessageForMe(_ messageId: String) {
+        deletedMessageIds.insert(messageId)
+        saveLocalState()
+    }
+
+    func deleteMessageForEveryone(_ messageId: String) {
+        // Remove from local messages entirely
+        messages.removeAll { $0.id == messageId }
+        deletedMessageIds.insert(messageId)
+        saveLocal()
+        saveLocalState()
+        // Try to delete on backend (if endpoint exists)
+        Task {
+            // POST /chat/{id}/delete — may or may not exist on backend
+            struct EmptyBody: Encodable {}
+            _ = try? await APIClient.shared.deleteMessage(id: messageId)
+        }
+    }
+
+    func archiveConversation(_ peerUid: String) {
+        archivedPeerIds.insert(peerUid)
+        saveLocalState()
+    }
+
+    func unarchiveConversation(_ peerUid: String) {
+        archivedPeerIds.remove(peerUid)
+        saveLocalState()
+    }
+
+    func deleteConversation(_ peerUid: String) {
+        deletedPeerIds.insert(peerUid)
+        archivedPeerIds.remove(peerUid)
+        saveLocalState()
+    }
+
     // MARK: - Group Chat
 
     func messagesForGroup(_ groupId: String) -> [ChatMessage] {
-        messages.filter { $0.groupId == groupId }.sorted { $0.createdAt < $1.createdAt }
+        let gid = groupId.lowercased()
+        return messages.filter { $0.groupId?.lowercased() == gid && !deletedMessageIds.contains($0.id) }
+            .sorted { $0.createdAt < $1.createdAt }
     }
 
     func sendGroupText(_ text: String, groupId: String) {
-        let msg = ChatMessage(fromId: myUid, fromName: AppState.shared.userName, groupId: groupId, text: text)
+        let localId = UUID().uuidString
+        let gid = groupId.lowercased()
+        let msg = ChatMessage(id: localId, fromId: myUid, fromName: AppState.shared.userName, groupId: gid, text: text)
         messages.append(msg)
         saveLocal()
         Task {
-            try? await APIClient.shared.sendGroupMessage(groupID: groupId, text: text)
+            do {
+                let server = try await APIClient.shared.sendGroupMessage(groupID: groupId, text: text)
+                await MainActor.run {
+                    if let idx = self.messages.firstIndex(where: { $0.id == localId }) {
+                        self.messages[idx].id = server.id
+                        if let date = server.createdAt { self.messages[idx].createdAt = date }
+                    }
+                }
+            } catch {
+                Log.d("[PAKT Chat] sendGroupText failed: \(error)")
+            }
         }
     }
 
     func loadGroupMessages(_ groupId: String) {
+        let gid = groupId.lowercased()
         Task {
             if let response = try? await APIClient.shared.listGroupMessages(groupID: groupId) {
                 await MainActor.run {
-                    for msg in response.messages {
-                        if !self.messages.contains(where: { $0.id == msg.id }) {
-                            self.messages.append(msg)
-                        }
+                    let serverIds = Set(response.messages.map { $0.id })
+                    let localOnly = self.messages.filter { msg in
+                        msg.groupId?.lowercased() == gid && !serverIds.contains(msg.id)
+                        && msg.fromId == self.myUid
+                        && msg.createdAt.timeIntervalSinceNow > -30
                     }
-                    self.readReceipts[groupId] = response.readReceipts
+                    self.messages.removeAll { $0.groupId?.lowercased() == gid }
+                    self.messages.append(contentsOf: response.messages)
+                    self.messages.append(contentsOf: localOnly)
+                    self.messages.sort { $0.createdAt < $1.createdAt }
+                    self.readReceipts[gid] = response.readReceipts
+                    self.objectWillChange.send()
                 }
             }
         }
     }
 
     func markGroupRead(_ groupId: String) {
+        let gid = groupId.lowercased()
         guard let lastMsg = messagesForGroup(groupId).last else { return }
-        // Update local immediately
         let receipt = APIClient.ChatReadReceipt(userId: myUid, userName: AppState.shared.userName, lastReadMessageId: lastMsg.id)
-        var current = readReceipts[groupId] ?? []
+        var current = readReceipts[gid] ?? []
         if let i = current.firstIndex(where: { $0.userId == myUid }) {
             current[i] = receipt
         } else {
             current.append(receipt)
         }
-        readReceipts[groupId] = current
-        // Sync to backend
+        readReceipts[gid] = current
         Task { try? await APIClient.shared.markRead(messageId: lastMsg.id, groupId: groupId) }
     }
 
     func markPeerRead(_ peerId: String) {
-        guard let lastMsg = messagesWithFriend(peerId).last else { return }
+        guard let lastMsg = messagesWithFriend(peerId).last else {
+            Log.d("[SEEN] markPeerRead(\(peerId.prefix(8))): no messages")
+            return
+        }
+        Log.d("[SEEN] markPeerRead(\(peerId.prefix(8))): lastMsg.id=\(lastMsg.id.prefix(8)) fromMe=\(lastMsg.isFromMe)")
         let receipt = APIClient.ChatReadReceipt(userId: myUid, userName: AppState.shared.userName, lastReadMessageId: lastMsg.id)
         var current = readReceipts[peerId] ?? []
         if let i = current.firstIndex(where: { $0.userId == myUid }) {
@@ -277,23 +489,81 @@ final class ActivityManager: ObservableObject {
             current.append(receipt)
         }
         readReceipts[peerId] = current
-        Task { try? await APIClient.shared.markRead(messageId: lastMsg.id, peerId: peerId) }
+        Task {
+            do {
+                try await APIClient.shared.markRead(messageId: lastMsg.id, peerId: peerId)
+                Log.d("[SEEN] markRead API OK for \(peerId.prefix(8)) msgId=\(lastMsg.id.prefix(8))")
+            } catch {
+                Log.d("[SEEN] markRead API FAILED: \(error)")
+            }
+        }
     }
 
     /// Returns user IDs who have seen the last message in a group
     func seenBy(groupId: String) -> [(userId: String, userName: String)] {
+        let gid = groupId.lowercased()
         guard let lastMsg = messagesForGroup(groupId).last else { return [] }
-        let receipts = readReceipts[groupId] ?? []
+        let receipts = readReceipts[gid] ?? []
         return receipts
             .filter { $0.lastReadMessageId == lastMsg.id && $0.userId != myUid }
             .map { (userId: $0.userId, userName: $0.userName) }
     }
 
-    /// Returns user IDs who have seen the last message in a direct conversation
+    /// Has the friend seen my last sent message?
     func seenByPeer(_ peerId: String) -> Bool {
-        guard let lastMsg = messagesWithFriend(peerId).last, lastMsg.isFromMe else { return false }
-        let receipts = readReceipts[peerId] ?? []
-        return receipts.contains { $0.lastReadMessageId == lastMsg.id && $0.userId == peerId }
+        let msgs = messagesWithFriend(peerId)
+        guard let lastMsg = msgs.last, lastMsg.isFromMe else { return false }
+        let allReceipts = readReceipts[peerId] ?? []
+        guard let friendReceipt = allReceipts.first(where: { $0.userId == peerId }) else {
+            Log.d("[SEEN] seenByPeer(\(peerId.prefix(8))): no receipt from friend. Keys in readReceipts: \(Array(readReceipts.keys).map { $0.prefix(8) })")
+            return false
+        }
+        Log.d("[SEEN] seenByPeer(\(peerId.prefix(8))): friendReceipt.msgId=\(friendReceipt.lastReadMessageId.prefix(8)) lastMsg.id=\(lastMsg.id.prefix(8)) match=\(friendReceipt.lastReadMessageId == lastMsg.id)")
+        if friendReceipt.lastReadMessageId == lastMsg.id { return true }
+        let allIds = msgs.map { $0.id }
+        if let readIdx = allIds.lastIndex(of: friendReceipt.lastReadMessageId),
+           let sentIdx = allIds.lastIndex(of: lastMsg.id) {
+            return readIdx >= sentIdx
+        }
+        return false
+    }
+
+    /// Load peer read receipts from server for a specific conversation
+    func loadPeerReceipts(_ peerId: String) {
+        Task {
+            do {
+                let list: [APIClient.ChatReadReceipt] = try await APIClient.shared.getPeerReceipts(peerId: peerId)
+                await MainActor.run {
+                    for r in list {
+                        let key = r.userId == self.myUid ? peerId : r.userId
+                        var current = self.readReceipts[key] ?? []
+                        if let i = current.firstIndex(where: { $0.userId == r.userId }) {
+                            current[i] = r
+                        } else {
+                            current.append(r)
+                        }
+                        self.readReceipts[key] = current
+                    }
+                    self.objectWillChange.send()
+                    Log.d("[SEEN] Loaded \(list.count) receipts for peer \(peerId.prefix(8))")
+                }
+            } catch {
+                Log.d("[SEEN] loadPeerReceipts FAILED for \(peerId.prefix(8)): \(error)")
+            }
+        }
+    }
+
+    /// Load receipts for all active conversations
+    func loadAllPeerReceipts() {
+        for uid in activeConversationUids() {
+            loadPeerReceipts(uid)
+        }
+    }
+
+    /// Total unread badge count
+    var totalUnread: Int {
+        let peerUnread = activeConversationUids().reduce(0) { $0 + unreadCount(for: $1) }
+        return peerUnread
     }
 }
 
@@ -308,178 +578,206 @@ struct PickedFriend: Identifiable, Hashable {
 // MARK: - Conversations list
 
 enum MessageTab: String, CaseIterable {
-    case groups = "Groups"
     case friends = "Friends"
+    case groups = "Groups"
 }
 
 struct ActivitiesView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject private var manager = ActivityManager.shared
     @ObservedObject private var fm = FriendManager.shared
+    @State private var pickedFriend: PickedFriend? = nil
+    @State private var selectedGroupChat: UUID? = nil
     @State private var showNewConversation = false
-    @State private var selectedTab: MessageTab = .groups
-    @State private var navPath = NavigationPath()
+    @State private var selectedTab: MessageTab = .friends
+    @State private var searchText = ""
+    @State private var isSearching = false
+    @State private var showArchived = false
 
     var body: some View {
-        NavigationStack(path: $navPath) {
-            ZStack {
-                Theme.bg.ignoresSafeArea()
+        ZStack {
+            Theme.bg.ignoresSafeArea()
 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        // Header
-                        HStack(alignment: .center) {
-                            Text("Messages")
-                                .font(.system(size: 34, weight: .bold))
-                                .foregroundColor(Theme.text)
-                            Spacer()
-                            Button(action: { showNewConversation = true }) {
-                                Image(systemName: "square.and.pencil")
-                                    .font(.system(size: 17))
-                                    .foregroundColor(Theme.textMuted)
-                                    .frame(width: 40, height: 40)
-                                    .liquidGlass(cornerRadius: 10)
-                            }
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.top, 64)
-                        .padding(.bottom, 12)
+            List {
+                Section {
+                    header.listRowInsets(EdgeInsets())
+                    searchBar.listRowInsets(EdgeInsets())
 
-                        // Tab selector
-                        HStack(spacing: 0) {
-                            ForEach(MessageTab.allCases, id: \.self) { tab in
-                                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { selectedTab = tab } }) {
-                                    VStack(spacing: 8) {
-                                        Text(tab.rawValue)
-                                            .font(.system(size: 15, weight: selectedTab == tab ? .bold : .medium))
-                                            .foregroundColor(selectedTab == tab ? Theme.text : Theme.textMuted)
-                                        Rectangle()
-                                            .fill(selectedTab == tab ? Theme.text : Color.clear)
-                                            .frame(height: 2)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                            }
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 16)
+                    if showArchived {
+                        archivedSection.listRowInsets(EdgeInsets())
+                    } else {
+                        tabSelector.listRowInsets(EdgeInsets())
 
-                        // Content based on tab
                         switch selectedTab {
-                        case .groups:
-                            groupsList
                         case .friends:
-                            friendsList
+                            friendsList.listRowInsets(EdgeInsets())
+                        case .groups:
+                            groupsList.listRowInsets(EdgeInsets())
                         }
-
-                        Spacer().frame(height: 100)
                     }
+
+                    Spacer().frame(height: 100).listRowInsets(EdgeInsets())
                 }
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             }
-            .navigationBarHidden(true)
-            .navigationDestination(for: PickedFriend.self) { friend in
-                ConversationView(friendUid: friend.uid, friendName: friend.name, onClose: { navPath.removeLast() })
+            .listStyle(.plain)
+            .scrollIndicators(.hidden)
+            .refreshable {
+                manager.load()
+                manager.loadAllPeerReceipts()
+                // Reload group messages for all active groups
+                for group in appState.groups where group.isActive {
+                    manager.loadGroupMessages(group.id.uuidString)
+                }
+                clearAllPhotoCaches()
+            }
+        }
+        .sheet(isPresented: $showNewConversation) { friendPickerSheet }
+        .fullScreenCover(item: $pickedFriend) { friend in
+            SwipeDismissView {
+                ConversationView(friendUid: friend.uid, friendName: friend.name, onClose: { pickedFriend = nil })
                     .environmentObject(appState)
-                    .navigationBarHidden(true)
-            }
-            .navigationDestination(for: Group.self) { group in
-                GroupChatView(group: group)
-                    .environmentObject(appState)
-                    .navigationBarHidden(true)
-            }
-            .sheet(isPresented: $showNewConversation) { friendPickerSheet }
-            .onAppear { manager.load() }
+            } onDismiss: { pickedFriend = nil }
         }
-    }
-
-    // MARK: - Groups tab
-
-    private var groupsList: some View {
-        let sortedGroups = appState.groups.filter { $0.isActive }.sorted { g1, g2 in
-            let last1 = manager.messagesForGroup(g1.id.uuidString).last?.createdAt ?? .distantPast
-            let last2 = manager.messagesForGroup(g2.id.uuidString).last?.createdAt ?? .distantPast
-            return last1 > last2
-        }
-
-        return VStack(spacing: 8) {
-            if sortedGroups.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "person.3")
-                        .font(.system(size: 32))
-                        .foregroundColor(Theme.textFaint)
-                    Text(L10n.t("no_challenges"))
-                        .font(.system(size: 15))
-                        .foregroundColor(Theme.textMuted)
-                }
-                .padding(.top, 60)
-            } else {
-                ForEach(sortedGroups) { group in
-                    Button(action: { navPath.append(group) }) {
-                        groupChatCard(group)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-    }
-
-    private func groupChatCard(_ group: Group) -> some View {
-        let lastMsg = manager.messagesForGroup(group.id.uuidString).last
-
-        return HStack(spacing: 14) {
-            // Stacked avatars
-            ZStack {
-                ForEach(Array(group.members.prefix(3).enumerated()), id: \.offset) { i, m in
-                    AvatarView(name: m.name, size: 32, color: Theme.textMuted,
-                               uid: m.uid, isMe: appState.isMe(m))
+        .fullScreenCover(isPresented: Binding(
+            get: { selectedGroupChat != nil },
+            set: { if !$0 { selectedGroupChat = nil } }
+        )) {
+            if let gid = selectedGroupChat, let group = appState.groups.first(where: { $0.id == gid }) {
+                SwipeDismissView {
+                    GroupChatView(group: group)
                         .environmentObject(appState)
-                        .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
-                        .offset(x: CGFloat(i) * 10)
-                }
-            }
-            .frame(width: 48 + CGFloat(min(group.members.count - 1, 2)) * 10, height: 48, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(group.name)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Theme.text)
-                if let last = lastMsg, let text = last.text {
-                    Text("\(last.isFromMe ? "You" : last.fromName): \(text)")
-                        .font(.system(size: 14))
-                        .foregroundColor(Theme.textMuted)
-                        .lineLimit(1)
-                } else {
-                    Text("\(group.members.count) members")
-                        .font(.system(size: 14))
-                        .foregroundColor(Theme.textMuted)
-                }
-            }
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 6) {
-                if let last = lastMsg {
-                    Text(timeAgo(last.createdAt))
-                        .font(.system(size: 12))
-                        .foregroundColor(Theme.textFaint)
-                }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12))
-                    .foregroundColor(Theme.textFaint)
+                } onDismiss: { selectedGroupChat = nil }
             }
         }
-        .padding(14)
-        .liquidGlass(cornerRadius: 16)
+        .onAppear {
+            manager.load()
+            manager.loadAllPeerReceipts()
+            manager.objectWillChange.send()
+        }
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack(alignment: .center) {
+            if showArchived {
+                Button(action: { withAnimation { showArchived = false } }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Theme.text)
+                }
+            }
+            Text(showArchived ? "Archived" : "Messages")
+                .font(.system(size: 34, weight: .bold))
+                .foregroundColor(Theme.text)
+            Spacer()
+            HStack(spacing: 10) {
+                if !showArchived {
+                    // Archived button
+                    let archivedCount = manager.archivedConversationUids().count
+                    if archivedCount > 0 {
+                        Button(action: { withAnimation { showArchived = true } }) {
+                            Image(systemName: "archivebox")
+                                .font(.system(size: 16))
+                                .foregroundColor(Theme.textMuted)
+                                .frame(width: 40, height: 40)
+                                .liquidGlass(cornerRadius: 10)
+                        }
+                    }
+                }
+                Button(action: { showNewConversation = true }) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 17))
+                        .foregroundColor(Theme.textMuted)
+                        .frame(width: 40, height: 40)
+                        .liquidGlass(cornerRadius: 10)
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 64)
+        .padding(.bottom, 12)
+    }
+
+    // MARK: - Search bar
+
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15))
+                .foregroundColor(Theme.textFaint)
+            TextField("Search", text: $searchText)
+                .font(.system(size: 16))
+                .foregroundColor(Theme.text)
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+                .onTapGesture { withAnimation { isSearching = true } }
+
+            if !searchText.isEmpty {
+                Button(action: { searchText = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundColor(Theme.textFaint)
+                }
+            } else if isSearching {
+                Button("Cancel") {
+                    withAnimation { isSearching = false }
+                    searchText = ""
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+                .font(.system(size: 15))
+                .foregroundColor(Theme.textMuted)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .liquidGlass(cornerRadius: 12)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+
+    // MARK: - Tab selector
+
+    private var tabSelector: some View {
+        HStack(spacing: 0) {
+            ForEach(MessageTab.allCases, id: \.self) { tab in
+                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { selectedTab = tab } }) {
+                    VStack(spacing: 8) {
+                        Text(tab.rawValue)
+                            .font(.system(size: 15, weight: selectedTab == tab ? .bold : .medium))
+                            .foregroundColor(selectedTab == tab ? Theme.text : Theme.textMuted)
+                        Rectangle()
+                            .fill(selectedTab == tab ? Theme.text : Color.clear)
+                            .frame(height: 2)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 16)
     }
 
     // MARK: - Friends tab
 
     private var friendsList: some View {
-        let convUids = manager.conversationUids()
-        let otherFriends = fm.friends.filter { f in !convUids.contains(f.id) }
+        let convUids = searchText.isEmpty
+            ? manager.activeConversationUids()
+            : manager.activeConversationUids().filter { uid in
+                let name = fm.friends.first { $0.id == uid }?.firstName
+                    ?? manager.messagesWithFriend(uid).last(where: { $0.fromId == uid })?.fromName ?? ""
+                return name.lowercased().contains(searchText.lowercased())
+                    || manager.messagesWithFriend(uid).contains { ($0.text ?? "").lowercased().contains(searchText.lowercased()) }
+            }
+        let otherFriends = fm.friends.filter { f in
+            !manager.conversationUids().contains(f.id)
+            && (searchText.isEmpty || f.firstName.lowercased().contains(searchText.lowercased()))
+        }
 
         return VStack(spacing: 0) {
-            if fm.friends.isEmpty {
+            if fm.friends.isEmpty && convUids.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "person.2")
                         .font(.system(size: 32))
@@ -491,15 +789,14 @@ struct ActivitiesView: View {
                 .padding(.top, 60)
             } else {
                 // Active conversations (sorted by most recent)
-                VStack(spacing: 8) {
+                VStack(spacing: 0) {
                     ForEach(convUids, id: \.self) { uid in
                         conversationCard(uid: uid)
                     }
                 }
-                .padding(.horizontal, 16)
 
                 // Friends with no conversation yet
-                if !otherFriends.isEmpty {
+                if !otherFriends.isEmpty && !isSearching {
                     VStack(alignment: .leading, spacing: 0) {
                         SectionTitle(text: L10n.t("start_conversation"))
                             .padding(.top, 28)
@@ -509,7 +806,7 @@ struct ActivitiesView: View {
                             HStack(spacing: 16) {
                                 ForEach(otherFriends) { friend in
                                     Button(action: {
-                                        navPath.append(PickedFriend(uid: friend.id, name: friend.firstName))
+                                        pickedFriend = PickedFriend(uid: friend.id, name: friend.firstName)
                                     }) {
                                         VStack(spacing: 8) {
                                             AvatarView(name: friend.firstName, size: 52, color: Theme.textMuted,
@@ -532,65 +829,200 @@ struct ActivitiesView: View {
         }
     }
 
-    // MARK: - Conversation card
+    // MARK: - Archived section
 
-    private func conversationCard(uid: String) -> some View {
-        let friend = fm.friends.first { $0.id == uid }
-        let nameFromMessages = manager.messagesWithFriend(uid).last(where: { $0.fromId == uid })?.fromName
-        let name = friend?.firstName ?? nameFromMessages ?? uid.prefix(8).description
-        let last = manager.lastMessage(with: uid)
-        let unread = manager.unreadCount(for: uid)
-
-        return Button(action: { navPath.append(PickedFriend(uid: uid, name: name)) }) {
-            HStack(spacing: 14) {
-                AvatarView(name: name, size: 48, color: Theme.textMuted, uid: uid, isMe: false)
-                    .environmentObject(appState)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(name)
-                        .font(.system(size: 16, weight: unread > 0 ? .bold : .semibold))
-                        .foregroundColor(Theme.text)
-
-                    if let last {
-                        if let title = last.activityTitle, let emoji = last.activityEmoji {
-                            HStack(spacing: 4) {
-                                Text(emoji).font(.system(size: 12))
-                                Text(title)
-                                    .font(.system(size: 14))
-                                    .foregroundColor(Theme.textMuted)
-                                    .lineLimit(1)
-                            }
-                        } else if let text = last.text {
-                            Text(text)
-                                .font(.system(size: 14))
-                                .foregroundColor(Theme.textMuted)
-                                .lineLimit(1)
-                        }
-                    } else {
-                        Text(L10n.t("send_first_activity"))
-                            .font(.system(size: 13))
-                            .foregroundColor(Theme.textFaint)
-                    }
+    private var archivedSection: some View {
+        let uids = manager.archivedConversationUids()
+        return VStack(spacing: 0) {
+            if uids.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "archivebox")
+                        .font(.system(size: 32))
+                        .foregroundColor(Theme.textFaint)
+                    Text("No archived conversations")
+                        .font(.system(size: 15))
+                        .foregroundColor(Theme.textMuted)
                 }
+                .padding(.top, 60)
+            } else {
+                ForEach(uids, id: \.self) { uid in
+                    conversationCard(uid: uid, isArchived: true)
+                }
+            }
+        }
+    }
 
-                Spacer()
+    // MARK: - Groups tab
 
-                VStack(alignment: .trailing, spacing: 6) {
-                    if let last {
+    private var groupsList: some View {
+        let sortedGroups = appState.groups.filter { $0.isActive }.sorted { g1, g2 in
+            let last1 = manager.messagesForGroup(g1.id.uuidString).last?.createdAt ?? .distantPast
+            let last2 = manager.messagesForGroup(g2.id.uuidString).last?.createdAt ?? .distantPast
+            return last1 > last2
+        }.filter { group in
+            searchText.isEmpty || group.name.lowercased().contains(searchText.lowercased())
+        }
+
+        return VStack(spacing: 0) {
+            if sortedGroups.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "person.3")
+                        .font(.system(size: 32))
+                        .foregroundColor(Theme.textFaint)
+                    Text(L10n.t("no_challenges"))
+                        .font(.system(size: 15))
+                        .foregroundColor(Theme.textMuted)
+                }
+                .padding(.top, 60)
+            } else {
+                ForEach(sortedGroups) { group in
+                    Button(action: { selectedGroupChat = group.id }) {
+                        groupChatCard(group)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+    }
+
+    private func groupChatCard(_ group: Group) -> some View {
+        let lastMsg = manager.messagesForGroup(group.id.uuidString).last
+
+        return HStack(spacing: 14) {
+            // Group photo or stacked avatars
+            if let groupPhoto = appState.loadGroupImage(for: group.id) {
+                Image(uiImage: groupPhoto)
+                    .resizable().scaledToFill()
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+            } else {
+                ZStack {
+                    Circle().fill(Theme.bgWarm).frame(width: 52, height: 52)
+                    Text(String(group.name.prefix(1)).uppercased())
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(Theme.textMuted)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(group.name)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Theme.text)
+                    Spacer()
+                    if let last = lastMsg {
                         Text(timeAgo(last.createdAt))
                             .font(.system(size: 12))
                             .foregroundColor(Theme.textFaint)
                     }
-                    if unread > 0 {
-                        Circle()
-                            .fill(Theme.green)
-                            .frame(width: 10, height: 10)
+                }
+
+                HStack(spacing: 4) {
+                    if let last = lastMsg, let text = last.text {
+                        Text(last.isFromMe ? "You: \(text)" : "\(last.fromName): \(text)")
+                            .font(.system(size: 14))
+                            .foregroundColor(Theme.textMuted)
+                            .lineLimit(1)
+                    } else {
+                        Text("\(group.members.count) members")
+                            .font(.system(size: 14))
+                            .foregroundColor(Theme.textFaint)
+                    }
+                    Spacer()
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+    }
+
+    // MARK: - Conversation card with swipe actions
+
+    private func conversationCard(uid: String, isArchived: Bool = false) -> some View {
+        let friend = fm.friends.first { $0.id == uid }
+        let nameFromMessages = manager.messagesWithFriend(uid).last(where: { $0.fromId == uid })?.fromName
+        let name = friend?.firstName ?? nameFromMessages ?? uid.prefix(8).description
+        let last = manager.lastMessage(with: uid)
+        let hasUnread = manager.hasUnreadMessages(from: uid)
+        let seen = manager.seenByPeer(uid)
+
+        return Button(action: { pickedFriend = PickedFriend(uid: uid, name: name) }) {
+            HStack(spacing: 14) {
+                AvatarView(name: name, size: 52, color: Theme.textMuted, uid: uid, isMe: false)
+                    .environmentObject(appState)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(name)
+                            .font(.system(size: 16, weight: hasUnread ? .bold : .regular))
+                            .foregroundColor(Theme.text)
+                        Spacer()
+                        if let last {
+                            Text(timeAgo(last.createdAt))
+                                .font(.system(size: 12))
+                                .foregroundColor(hasUnread ? Theme.green : Theme.textFaint)
+                        }
+                    }
+
+                    HStack(spacing: 4) {
+                        if let last {
+                            if let title = last.activityTitle, let emoji = last.activityEmoji {
+                                HStack(spacing: 4) {
+                                    if last.isFromMe { Text("You:").font(.system(size: 14)).foregroundColor(Theme.textMuted) }
+                                    Text(emoji).font(.system(size: 12))
+                                    Text(title)
+                                        .font(.system(size: 14, weight: hasUnread ? .medium : .regular))
+                                        .foregroundColor(hasUnread ? Theme.text : Theme.textMuted)
+                                        .lineLimit(1)
+                                }
+                            } else if let text = last.text {
+                                Text(last.isFromMe ? "You: \(text)" : text)
+                                    .font(.system(size: 14, weight: hasUnread ? .medium : .regular))
+                                    .foregroundColor(hasUnread ? Theme.text : Theme.textMuted)
+                                    .lineLimit(1)
+                            }
+                        } else {
+                            Text(L10n.t("send_first_activity"))
+                                .font(.system(size: 13))
+                                .foregroundColor(Theme.textFaint)
+                        }
+
+                        Spacer()
+
+                        // Unread dot or seen avatar
+                        if hasUnread {
+                            Circle()
+                                .fill(Theme.green)
+                                .frame(width: 10, height: 10)
+                        } else if let last, last.isFromMe && seen {
+                            AvatarView(name: name, size: 16, color: Theme.textMuted, uid: uid, isMe: false)
+                                .environmentObject(appState)
+                        }
                     }
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
             .padding(.vertical, 14)
-            .liquidGlass(cornerRadius: 16)
+        }
+        .contextMenu {
+            if isArchived {
+                Button {
+                    withAnimation { manager.unarchiveConversation(uid) }
+                } label: {
+                    Label("Unarchive", systemImage: "tray.and.arrow.up")
+                }
+            } else {
+                Button {
+                    withAnimation { manager.archiveConversation(uid) }
+                } label: {
+                    Label("Archive", systemImage: "archivebox")
+                }
+            }
+            Button(role: .destructive) {
+                withAnimation { manager.deleteConversation(uid) }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 
@@ -619,7 +1051,7 @@ struct ActivitiesView: View {
                             Button(action: {
                                 showNewConversation = false
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                                    navPath.append(PickedFriend(uid: friend.id, name: friend.firstName))
+                                    pickedFriend = PickedFriend(uid: friend.id, name: friend.firstName)
                                 }
                             }) {
                                 HStack(spacing: 14) {
@@ -668,8 +1100,11 @@ struct ConversationView: View {
     @State private var showFriendProfile = false
     @State private var textInput = ""
     @FocusState private var isTextFocused: Bool
+    @State private var messageToDelete: ChatMessage? = nil
+    @State private var localMessages: [ChatMessage] = []
+    @State private var pollTimer: Timer? = nil
 
-    var chatMessages: [ChatMessage] { manager.messagesWithFriend(friendUid) }
+    var chatMessages: [ChatMessage] { localMessages }
     var myUid: String { manager.myUid }
 
     var body: some View {
@@ -682,7 +1117,7 @@ struct ConversationView: View {
             // Messages area
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 2) {
+                    LazyVStack(spacing: 0) {
                         ForEach(Array(chatMessages.enumerated()), id: \.element.id) { index, msg in
                             VStack(spacing: 0) {
                                 // Timestamp between message groups
@@ -694,9 +1129,32 @@ struct ConversationView: View {
                                         .padding(.bottom, 8)
                                 }
 
-                                messageBubble(msg)
+                                messageBubble(msg, index: index)
                             }
                             .id(msg.id)
+                        }
+
+                        // Sent / Seen indicator
+                        if let lastMsg = chatMessages.last, lastMsg.isFromMe {
+                            if manager.seenByPeer(friendUid) {
+                                HStack(spacing: 4) {
+                                    Spacer()
+                                    AvatarView(name: friendName, size: 16, color: Theme.textMuted,
+                                               uid: friendUid, isMe: false)
+                                        .environmentObject(appState)
+                                }
+                                .padding(.trailing, 4)
+                                .padding(.top, 2)
+                            } else {
+                                HStack {
+                                    Spacer()
+                                    Text("Sent")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Theme.textFaint)
+                                }
+                                .padding(.trailing, 4)
+                                .padding(.top, 2)
+                            }
                         }
 
                         if chatMessages.isEmpty {
@@ -711,14 +1169,18 @@ struct ConversationView: View {
                             .padding(.top, 60)
                         }
 
-                        Spacer().frame(height: 8)
+                        Color.clear.frame(height: 1).id("bottom")
                     }
                     .padding(.horizontal, 12)
                 }
-                .onChange(of: chatMessages.count) { _ in
-                    if let last = chatMessages.last {
-                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                .onAppear {
+                    // Scroll to bottom when opening conversation
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        proxy.scrollTo("bottom", anchor: .bottom)
                     }
+                }
+                .onChange(of: chatMessages.count) { _ in
+                    withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
                 }
                 .onTapGesture { isTextFocused = false }
             }
@@ -737,6 +1199,63 @@ struct ConversationView: View {
             }
             .navigationViewStyle(.stack)
         }
+        .confirmationDialog("Delete message", isPresented: Binding(
+            get: { messageToDelete != nil },
+            set: { if !$0 { messageToDelete = nil } }
+        ), titleVisibility: .visible) {
+            Button("Delete for me", role: .destructive) {
+                if let msg = messageToDelete {
+                    withAnimation { manager.deleteMessageForMe(msg.id) }
+                }
+                messageToDelete = nil
+            }
+            if messageToDelete?.isFromMe == true {
+                Button("Delete for everyone", role: .destructive) {
+                    if let msg = messageToDelete {
+                        withAnimation { manager.deleteMessageForEveryone(msg.id) }
+                    }
+                    messageToDelete = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { messageToDelete = nil }
+        }
+        .onAppear {
+            localMessages = manager.messagesWithFriend(friendUid)
+            manager.markConversationOpened(friendUid)
+            manager.markPeerRead(friendUid)
+            manager.loadPeerReceipts(friendUid)
+            // Poll every 3s as fallback when WS is down
+            pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+                manager.load()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    let updated = manager.messagesWithFriend(friendUid)
+                    if updated.count != localMessages.count {
+                        localMessages = updated
+                        manager.markPeerRead(friendUid)
+                        manager.markConversationOpened(friendUid)
+                    }
+                }
+            }
+        }
+        .onDisappear {
+            pollTimer?.invalidate()
+            pollTimer = nil
+        }
+        .onReceive(WebSocketManager.shared.onChatMessage) { ws in
+            if ws.groupId == nil && (ws.fromId == friendUid || ws.toId == friendUid) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    localMessages = manager.messagesWithFriend(friendUid)
+                    manager.markPeerRead(friendUid)
+                    manager.markConversationOpened(friendUid)
+                }
+            }
+        }
+        .onReceive(manager.$messages) { _ in
+            let updated = manager.messagesWithFriend(friendUid)
+            if updated.count != localMessages.count {
+                localMessages = updated
+            }
+        }
     }
 
     // MARK: - Header
@@ -753,9 +1272,11 @@ struct ConversationView: View {
                     AvatarView(name: friendName, size: 34, color: Theme.textMuted,
                                uid: friendUid, isMe: false)
                         .environmentObject(appState)
-                    Text(friendName)
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundColor(Theme.text)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(friendName)
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(Theme.text)
+                    }
                 }
             }
             Spacer()
@@ -837,48 +1358,86 @@ struct ConversationView: View {
         }
     }
 
+    // MARK: - Messenger-style bubble grouping
+
+    private func isFirstInGroup(_ index: Int) -> Bool {
+        guard index > 0 else { return true }
+        let current = chatMessages[index]
+        let prev = chatMessages[index - 1]
+        return current.fromId != prev.fromId || current.createdAt.timeIntervalSince(prev.createdAt) > 15 * 60
+    }
+
+    private func isLastInGroup(_ index: Int) -> Bool {
+        guard index < chatMessages.count - 1 else { return true }
+        let current = chatMessages[index]
+        let next = chatMessages[index + 1]
+        return current.fromId != next.fromId || next.createdAt.timeIntervalSince(current.createdAt) > 15 * 60
+    }
+
     // MARK: - Message bubble
 
-    func messageBubble(_ msg: ChatMessage) -> some View {
+    func messageBubble(_ msg: ChatMessage, index: Int) -> some View {
         let isMine = msg.fromId == myUid
+        let isFirst = isFirstInGroup(index)
+        let isLast = isLastInGroup(index)
 
-        return HStack(alignment: .top, spacing: 8) {
+        return HStack(alignment: .bottom, spacing: 8) {
             if isMine { Spacer(minLength: 60) }
 
-            // In group chat, show avatar for other people's messages
-            if isGroupChat && !isMine {
-                AvatarView(name: msg.fromName, size: 28, color: Theme.textMuted,
-                           uid: msg.fromId, isMe: false)
-                    .environmentObject(appState)
+            // Avatar: only show on last message of a group from other person
+            if !isMine {
+                if isLast {
+                    AvatarView(name: msg.fromName, size: 28, color: Theme.textMuted,
+                               uid: msg.fromId, isMe: false)
+                        .environmentObject(appState)
+                } else {
+                    Spacer().frame(width: 28)
+                }
             }
 
-            VStack(alignment: isMine ? .trailing : .leading, spacing: 6) {
-                // In group chat, show sender name
-                if isGroupChat && !isMine {
-                    Text(msg.fromName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.textMuted)
-                        .padding(.leading, 4)
-                }
-
+            VStack(alignment: isMine ? .trailing : .leading, spacing: 0) {
                 if msg.isActivity {
-                    // Activity proposal card
                     activityProposalCard(msg, isMine: isMine)
+                        .contextMenu { messageContextMenu(msg) }
                 } else {
-                    // Text bubble
+                    // Text bubble with Messenger-style corners
                     Text(msg.text ?? "")
                         .font(.system(size: 15))
                         .foregroundColor(isMine ? .white : Theme.text)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 9)
                         .background(isMine ? Theme.green : Theme.bgWarm)
-                        .cornerRadius(18)
+                        .clipShape(BubbleShape(
+                            isMine: isMine,
+                            isFirst: isFirst,
+                            isLast: isLast
+                        ))
+                        .contextMenu { messageContextMenu(msg) }
                 }
             }
 
             if !isMine { Spacer(minLength: 60) }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, isLast ? 4 : 1)
+    }
+
+    // MARK: - Context menu (long press)
+
+    @ViewBuilder
+    private func messageContextMenu(_ msg: ChatMessage) -> some View {
+        if let text = msg.text {
+            Button {
+                UIPasteboard.general.string = text
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
+        }
+
+        Button(role: .destructive) {
+            messageToDelete = msg
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
     }
 
     // MARK: - Activity proposal card
@@ -951,6 +1510,41 @@ struct ConversationView: View {
         let days = hrs / 24
         if days == 1 { return "yesterday" }
         return "\(days)d"
+    }
+}
+
+// MARK: - Messenger-style bubble shape
+
+struct BubbleShape: Shape {
+    let isMine: Bool
+    let isFirst: Bool
+    let isLast: Bool
+
+    func path(in rect: CGRect) -> Path {
+        let r: CGFloat = 18
+        let tail: CGFloat = 6  // smaller corner for tail side
+
+        // Determine corner radii
+        let topLeft: CGFloat = isMine ? r : (isFirst ? r : tail)
+        let topRight: CGFloat = isMine ? (isFirst ? r : tail) : r
+        let bottomLeft: CGFloat = isMine ? r : (isLast ? tail : tail)
+        let bottomRight: CGFloat = isMine ? (isLast ? tail : tail) : r
+
+        return Path { path in
+            path.move(to: CGPoint(x: rect.minX + topLeft, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX - topRight, y: rect.minY))
+            path.addArc(center: CGPoint(x: rect.maxX - topRight, y: rect.minY + topRight),
+                        radius: topRight, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - bottomRight))
+            path.addArc(center: CGPoint(x: rect.maxX - bottomRight, y: rect.maxY - bottomRight),
+                        radius: bottomRight, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+            path.addLine(to: CGPoint(x: rect.minX + bottomLeft, y: rect.maxY))
+            path.addArc(center: CGPoint(x: rect.minX + bottomLeft, y: rect.maxY - bottomLeft),
+                        radius: bottomLeft, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + topLeft))
+            path.addArc(center: CGPoint(x: rect.minX + topLeft, y: rect.minY + topLeft),
+                        radius: topLeft, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        }
     }
 }
 

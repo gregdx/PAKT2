@@ -1,6 +1,4 @@
 import SwiftUI
-import AuthenticationServices
-import FamilyControls
 
 struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
@@ -251,7 +249,7 @@ struct OnboardingView: View {
                         Button(action: { withAnimation { wtPage = totalPages - 1 } }) {
                             Text(L10n.t("skip"))
                                 .font(.system(size: 15, weight: .medium))
-                                .foregroundColor(Color.black.opacity(0.35))
+                                .foregroundColor(Color.black.opacity(0.5))
                         }
                     }
                 }
@@ -338,7 +336,7 @@ struct OnboardingView: View {
                             Button(action: { finalizeOnboarding() }) {
                                 Text(L10n.t("enter_manually"))
                                     .font(.system(size: 15))
-                                    .foregroundColor(Color.black.opacity(0.35))
+                                    .foregroundColor(Color.black.opacity(0.5))
                             }
                         }
                     } else {

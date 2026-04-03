@@ -54,6 +54,7 @@ private struct CreateGroupBody: Encodable {
     let stake: String
     let requiredPlayers: Int
     let trackedApps: [String]?
+    let startDate: String?
 }
 
 private struct SyncScoreBody: Encodable {
@@ -154,7 +155,9 @@ class APIClient {
         body: (any Encodable)? = nil,
         authenticated: Bool = true
     ) async throws -> T {
-        let url = URL(string: baseURL + path)!
+        guard let url = URL(string: baseURL + path) else {
+            throw APIError(message: "Invalid URL: \(path)", statusCode: 0)
+        }
         var req = URLRequest(url: url)
         req.httpMethod = method.rawValue
         req.timeoutInterval = 8
@@ -203,8 +206,8 @@ class APIClient {
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
-            print("[API] Decode error: \(error)")
-            print("[API] Raw response: \(String(data: data, encoding: .utf8) ?? "nil")")
+            Log.d("[API] Decode error: \(error)")
+            Log.d("[API] Raw response: \(String(data: data, encoding: .utf8) ?? "nil")")
             throw error
         }
     }
@@ -399,8 +402,14 @@ class APIClient {
         try await request(.GET, "/groups")
     }
 
-    func createGroup(name: String, mode: String, scope: String, goalMinutes: Int, duration: String, photoName: String = "", stake: String = "For fun", requiredPlayers: Int = 2, trackedApps: [String] = []) async throws -> APIGroup {
-        try await request(.POST, "/groups", body: CreateGroupBody(name: name, mode: mode, scope: scope, goalMinutes: goalMinutes, duration: duration, photoName: photoName, stake: stake, requiredPlayers: requiredPlayers, trackedApps: trackedApps.isEmpty ? nil : trackedApps))
+    func createGroup(name: String, mode: String, scope: String, goalMinutes: Int, duration: String, photoName: String = "", stake: String = "For fun", requiredPlayers: Int = 2, trackedApps: [String] = [], startDate: Date? = nil) async throws -> APIGroup {
+        var startDateStr: String? = nil
+        if let sd = startDate {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime]
+            startDateStr = f.string(from: sd)
+        }
+        return try await request(.POST, "/groups", body: CreateGroupBody(name: name, mode: mode, scope: scope, goalMinutes: goalMinutes, duration: duration, photoName: photoName, stake: stake, requiredPlayers: requiredPlayers, trackedApps: trackedApps.isEmpty ? nil : trackedApps, startDate: startDateStr))
     }
 
     func getGroupByCode(_ code: String) async throws -> APIGroup {
@@ -487,14 +496,19 @@ class APIClient {
         try await request(.GET, "/chat")
     }
 
-    func sendChatMessage(text: String, toId: String) async throws {
-        struct Body: Encodable { let text: String; let toId: String }
-        let _: EmptyResponse = try await request(.POST, "/chat", body: Body(text: text, toId: toId))
+    struct ServerChatMessage: Decodable {
+        let id: String
+        let createdAt: Date?
     }
 
-    func sendActivityProposal(activityTitle: String, activityEmoji: String, toId: String) async throws {
+    func sendChatMessage(text: String, toId: String) async throws -> ServerChatMessage {
+        struct Body: Encodable { let text: String; let toId: String }
+        return try await request(.POST, "/chat", body: Body(text: text, toId: toId))
+    }
+
+    func sendActivityProposal(activityTitle: String, activityEmoji: String, toId: String) async throws -> ServerChatMessage {
         struct Body: Encodable { let activityTitle: String; let activityEmoji: String; let toId: String }
-        let _: EmptyResponse = try await request(.POST, "/chat/activity", body: Body(activityTitle: activityTitle, activityEmoji: activityEmoji, toId: toId))
+        return try await request(.POST, "/chat/activity", body: Body(activityTitle: activityTitle, activityEmoji: activityEmoji, toId: toId))
     }
 
     func respondToProposal(id: String, response: String) async throws {
@@ -519,14 +533,32 @@ class APIClient {
         try await request(.GET, "/groupchat/\(groupID)")
     }
 
-    func sendGroupMessage(groupID: String, text: String) async throws {
+    func sendGroupMessage(groupID: String, text: String) async throws -> ServerChatMessage {
         struct Body: Encodable { let text: String }
-        let _: EmptyResponse = try await request(.POST, "/groupchat/\(groupID)", body: Body(text: text))
+        return try await request(.POST, "/groupchat/\(groupID)", body: Body(text: text))
     }
 
     func markRead(messageId: String, groupId: String? = nil, peerId: String? = nil) async throws {
         struct Body: Encodable { let messageId: String; let groupId: String?; let peerId: String? }
         let _: EmptyResponse = try await request(.POST, "/chat/read", body: Body(messageId: messageId, groupId: groupId, peerId: peerId))
+    }
+
+    func getPeerReceipts(peerId: String) async throws -> [ChatReadReceipt] {
+        try await request(.GET, "/chat/receipts/\(peerId)")
+    }
+
+    func deleteMessage(id: String) async throws {
+        let _: EmptyResponse = try await request(.DELETE, "/chat/\(id)")
+    }
+
+    // MARK: - Group Photos
+
+    func uploadGroupPhoto(groupID: String, base64: String) async throws {
+        let _: EmptyResponse = try await request(.PUT, "/groupphoto/\(groupID)", body: PhotoBody(photoBase64: base64))
+    }
+
+    func getGroupPhoto(groupID: String) async throws -> PhotoResponse {
+        try await request(.GET, "/groupphoto/\(groupID)")
     }
 }
 

@@ -93,6 +93,7 @@ enum L10n {
         "active_challenges":    "my active challenges",
         "no_challenges":        "No active challenges",
         "days_remaining":       "days remaining",
+        "last_day":             "last day",
         "rank":                 "rank",
         "you":                  "you",
 
@@ -425,5 +426,14 @@ enum L10n {
         "pakt_created":             "Pakt created",
         "pakt_activated":           "The pakt has started!",
         "sign_the_pakt":            "Sign the pakt",
+
+        // Empty states
+        "search_or_invite":         "Search by username or invite a friend",
+        "all_caught_up":            "You're all caught up!",
+        "pending_invitations":      "pending invitations",
+
+        // Group chat
+        "sent":                     "Sent",
+        "no_messages_yet":          "No messages yet",
     ]
 }

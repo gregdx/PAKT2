@@ -222,11 +222,26 @@ struct Group: Identifiable, Hashable {
     var trackedApps    : [String]   = []  // App keywords to track (e.g. ["instagram", "tiktok"])
 
     var endDate: Date {
-        Calendar.current.date(byAdding: .day, value: duration.days, to: startDate) ?? startDate
+        // End at 23:59:59 of the last day
+        let cal = Calendar.current
+        let rawEnd = cal.date(byAdding: .day, value: duration.days, to: startDate) ?? startDate
+        // Set to end of that day (23:59:59)
+        return cal.date(bySettingHour: 23, minute: 59, second: 59, of: rawEnd) ?? rawEnd
     }
     var daysLeft: Int {
         guard status != .pending else { return duration.days }
-        return max(0, Calendar.current.dateComponents([.day], from: Date(), to: endDate).day ?? 0)
+        let cal = Calendar.current
+        // Count full days remaining (today doesn't count as "left" if it's the last day)
+        let startOfToday = cal.startOfDay(for: Date())
+        let startOfEnd = cal.startOfDay(for: endDate)
+        let days = cal.dateComponents([.day], from: startOfToday, to: startOfEnd).day ?? 0
+        return max(0, days)
+    }
+    var isCompleted: Bool {
+        status == .active && Date() > endDate
+    }
+    var hasStarted: Bool {
+        Date() >= startDate
     }
     var challengeProgress: Double {
         min(Double(duration.days - daysLeft) / Double(duration.days), 1.0)
@@ -386,19 +401,8 @@ struct AppIconView: View {
 func formatTime(_ minutes: Int) -> String {
     "\(minutes / 60)h\(String(format: "%02d", minutes % 60))"
 }
-func formatAvg(_ minutes: Int) -> String { formatTime(minutes) + "/d" }
 
 
-private let dateDisplayFormatter: DateFormatter = {
-    let f = DateFormatter()
-    f.locale = Locale(identifier: "en_US")
-    f.dateFormat = "MMMM d, yyyy"
-    return f
-}()
-
-func formatDate(_ date: Date) -> String {
-    dateDisplayFormatter.string(from: date)
-}
 
 func generateGroupCode() -> String {
     let chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -420,8 +424,3 @@ enum JoinResult {
     case error(String)
 }
 
-// MARK: - Notifications
-
-extension Notification.Name {
-    static let goalDidChange = Notification.Name("goalDidChange")
-}

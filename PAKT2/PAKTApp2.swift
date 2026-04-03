@@ -14,7 +14,7 @@ struct PAKTApp: App {
         WindowGroup {
             ContentView()
                 .onOpenURL { url in
-                    print("[PAKT] onOpenURL: \(url)")
+                    Log.d("[PAKT] onOpenURL: \(url)")
                     guard url.scheme == "pakt2",
                           let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
 

@@ -215,7 +215,7 @@ struct MemberProfileView: View {
                 scoresByDate[score.date] = score.minutes
             }
         } catch {
-            print("[MemberProfileView] loadWeekHistory error: \(error)")
+            Log.d("[MemberProfileView] loadWeekHistory error: \(error)")
         }
 
         // Construire depuis le debut du groupe jusqu'a aujourd'hui

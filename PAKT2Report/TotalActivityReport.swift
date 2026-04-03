@@ -1,6 +1,4 @@
 import DeviceActivity
-import ExtensionKit
-import ManagedSettings
 import SwiftUI
 
 @main
@@ -20,6 +18,13 @@ struct TotalActivityReport: DeviceActivityReportExtension {
 // MARK: - Shared helpers
 
 private let appGroupID = "group.com.PAKT2"
+
+private let dateFmt: DateFormatter = {
+    let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+}()
+private let dayFmt: DateFormatter = {
+    let f = DateFormatter(); f.dateFormat = "EEE"; f.locale = Locale(identifier: "en_US"); return f
+}()
 private let green = Color(red: 0.00, green: 0.75, blue: 0.36)
 private let red   = Color(red: 0.93, green: 0.18, blue: 0.09)
 
@@ -29,8 +34,7 @@ private func writeURLToken(_ token: String) {
 }
 
 private func generateToken() -> String {
-    let ts = Int(Date().timeIntervalSince1970)
-    return "\(ts)"
+    UUID().uuidString
 }
 
 /// Construit une URL sécurisée avec token App Group
@@ -47,40 +51,35 @@ private func formatST(_ m: Int) -> String {
 
 // MARK: - Keychain sharing (fonctionne même quand App Group est cassé)
 
+// Keep in sync with AppConfig in SharedComponents2.swift
 private let keychainGroup = "9U5UZW39LQ.com.PAKT2"
 
 private func keychainWrite(key: String, value: String) {
-    let data = value.data(using: .utf8)!
-    // Supprimer l'ancien item SANS access group (migration)
-    let oldQuery: [String: Any] = [
-        kSecClass as String: kSecClassGenericPassword,
-        kSecAttrAccount as String: key
-    ]
-    SecItemDelete(oldQuery as CFDictionary)
-    // Supprimer aussi avec access group
-    let groupQuery: [String: Any] = [
+    guard let data = value.data(using: .utf8) else { return }
+    let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
         kSecAttrAccount as String: key,
         kSecAttrAccessGroup as String: keychainGroup
     ]
-    SecItemDelete(groupQuery as CFDictionary)
-    // Ajouter avec access group explicite
-    var add = groupQuery
-    add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-    add[kSecValueData as String] = data
-    SecItemAdd(add as CFDictionary, nil)
+    let attrs: [String: Any] = [kSecValueData as String: data]
+    let status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+    if status == errSecItemNotFound {
+        var newItem = query
+        newItem[kSecValueData as String] = data
+        newItem[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        SecItemAdd(newItem as CFDictionary, nil)
+    }
 }
 
 private func writeToShared(key: String, value: Int) {
-    let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
     // App Group UD
     let ud = UserDefaults(suiteName: appGroupID)
     ud?.set(value, forKey: key)
-    ud?.set(df.string(from: Date()), forKey: "\(key)_date")
+    ud?.set(dateFmt.string(from: Date()), forKey: "\(key)_date")
     ud?.synchronize()
     // Keychain
     keychainWrite(key: key, value: "\(value)")
-    keychainWrite(key: "\(key)_date", value: df.string(from: Date()))
+    keychainWrite(key: "\(key)_date", value: dateFmt.string(from: Date()))
 }
 
 private func writeHistoryToShared(_ raw: String) {
@@ -102,23 +101,6 @@ private func goalMinutes() -> Int {
     return 180
 }
 
-private func writeToAppGroup(minutes: Int) -> String {
-    guard minutes > 0 else { return "skip:0min" }
-    guard let containerURL = FileManager.default.containerURL(
-        forSecurityApplicationGroupIdentifier: appGroupID
-    ) else { return "skip:noContainer" }
-    let fileURL = containerURL.appendingPathComponent("report.json")
-    let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
-    let payload: [String: Any] = ["minutes": minutes, "date": df.string(from: Date())]
-    do {
-        let data = try JSONSerialization.data(withJSONObject: payload)
-        try data.write(to: fileURL, options: .atomic)
-        return "wrote:\(minutes)"
-    } catch {
-        return "err:\(error.localizedDescription.prefix(30))"
-    }
-}
-
 // MARK: - Go Backend REST API (direct write from extension)
 
 private let backendBaseURL = "https://pakt-api.fly.dev/v1"
@@ -138,8 +120,7 @@ private func keychainRead(_ key: String) -> String? {
 }
 
 private func syncToBackendREST(minutes: Int? = nil, socialMinutes: Int? = nil) {
-    let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
-    let dateStr = df.string(from: Date())
+    let dateStr = dateFmt.string(from: Date())
     var body: [String: Any] = ["date": dateStr]
     if let m = minutes { body["minutes"] = m }
     if let s = socialMinutes { body["social_minutes"] = s }
@@ -155,27 +136,14 @@ private func syncToBackendREST(minutes: Int? = nil, socialMinutes: Int? = nil) {
     URLSession.shared.dataTask(with: request) { _, _, _ in }.resume()
 }
 
-// MARK: - Pending score (disabled — UIKit crashes on iOS 17 view services)
-
-private func syncPendingScore(minutes: Int? = nil, socialMinutes: Int? = nil) {
-    // Disabled: UIDevice not available in DeviceActivityReport view service on iOS 17
-}
-
 private func extractMinutes(from data: DeviceActivityResults<DeviceActivityData>) async -> Int {
     var total: TimeInterval = 0
-    var segmentCount = 0
-    var dataCount = 0
     for await d in data {
-        dataCount += 1
         for await s in d.activitySegments {
             total += s.totalActivityDuration
-            segmentCount += 1
-            print("[PAKT Report] segment: \(Int(s.totalActivityDuration/60))min interval=\(s.dateInterval)")
         }
     }
-    let minutes = Int(total / 60)
-    print("[PAKT Report] extractMinutes: \(minutes) min from \(segmentCount) segments, \(dataCount) data entries")
-    return minutes
+    return Int(total / 60)
 }
 
 // MARK: - Scene 1 : Today (grand affichage profil)
@@ -194,7 +162,6 @@ struct TodayScene: DeviceActivityReportScene {
         // Debug : marquer que le DAR a tourné via Keychain (App Group container est null)
         let ts = ISO8601DateFormatter().string(from: Date())
         keychainWrite(key: "dar_debug", value: "today:\(minutes) at \(ts)")
-        _ = writeToAppGroup(minutes: minutes)
         if minutes > 0 {
             writeToShared(key: "shared_today", value: minutes)
             syncToBackendREST(minutes: minutes)
@@ -239,7 +206,6 @@ struct CompactScene: DeviceActivityReportScene {
 
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> TodayInfo {
         let minutes = await extractMinutes(from: data)
-        writeToAppGroup(minutes: minutes)
         return TodayInfo(minutes: minutes, goal: goalMinutes())
     }
 }
@@ -292,11 +258,9 @@ struct WeekAvgScene: DeviceActivityReportScene {
 
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> Int {
         let daily = await minutesPerDay(from: data)
-        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
-        let sevenDaysAgo = df.string(from: Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date())
+        let sevenDaysAgo = dateFmt.string(from: Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date())
         let weekData = daily.filter { $0.key >= sevenDaysAgo && $0.value > 0 }
         let avg = weekData.isEmpty ? 0 : weekData.values.reduce(0, +) / weekData.count
-        print("[PAKT WeekAvgScene] days=\(daily.count) weekDays=\(weekData.count) avg=\(avg)")
         if avg > 0 {
             writeToShared(key: "shared_weekavg", value: avg)
             notifyMainApp()
@@ -315,7 +279,6 @@ struct MonthAvgScene: DeviceActivityReportScene {
         let daily = await minutesPerDay(from: data)
         let withData = daily.values.filter { $0 > 0 }
         let avg = withData.isEmpty ? 0 : withData.reduce(0, +) / withData.count
-        print("[PAKT MonthAvgScene] days=\(daily.count) withData=\(withData.count) avg=\(avg)")
         if avg > 0 {
             writeToShared(key: "shared_monthavg", value: avg)
             notifyMainApp()
@@ -362,7 +325,6 @@ struct DayData: Identifiable {
 }
 
 func minutesPerDay(from data: DeviceActivityResults<DeviceActivityData>) async -> [String: Int] {
-    let dateFmt = DateFormatter(); dateFmt.dateFormat = "yyyy-MM-dd"
     var result: [String: Int] = [:]
     for await d in data {
         for await seg in d.activitySegments {
@@ -379,26 +341,14 @@ struct WeekChartScene: DeviceActivityReportScene {
     let content: ([DayData]) -> ChartReportView
 
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> [DayData] {
-        let df = DateFormatter(); df.dateFormat = "EEE"; df.locale = Locale(identifier: "en_US")
-        let dateFmt = DateFormatter(); dateFmt.dateFormat = "yyyy-MM-dd"
         let cal = Calendar.current
-
-        var minutesByDate: [String: Int] = [:]
-        for await d in data {
-            for await seg in d.activitySegments {
-                let m = Int(seg.totalActivityDuration / 60)
-                let dateKey = dateFmt.string(from: seg.dateInterval.start)
-                minutesByDate[dateKey, default: 0] += m
-            }
-        }
-
-        print("[PAKT WeekChart] minutesByDate=\(minutesByDate)")
+        let minutesByDate = await minutesPerDay(from: data)
 
         var result: [DayData] = []
         for i in (0..<7).reversed() {
             let date = cal.date(byAdding: .day, value: -i, to: Date()) ?? Date()
             let dateKey = dateFmt.string(from: date)
-            result.append(DayData(label: df.string(from: date), date: dateKey, minutes: minutesByDate[dateKey] ?? 0))
+            result.append(DayData(label: dayFmt.string(from: date), date: dateKey, minutes: minutesByDate[dateKey] ?? 0))
         }
 
         let entries = result.filter { $0.minutes > 0 }.map { "\($0.date):\($0.minutes)" }
@@ -468,7 +418,7 @@ struct CategoriesScene: DeviceActivityReportScene {
     let content: (Int) -> CategoriesReportView
 
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> Int {
-        let socialKW = ["instagram","tiktok","snapchat","twitter","facebook","messenger",
+        let socialKW: Set<String> = ["instagram","tiktok","snapchat","twitter","facebook","messenger",
                         "whatsapp","telegram","discord","reddit","threads","linkedin",
                         "bereal","signal","wechat","pinterest","mastodon","youtube"]
 
@@ -484,21 +434,16 @@ struct CategoriesScene: DeviceActivityReportScene {
 
                     var isSocial = false
                     for await a in catActivity.applications {
+                        guard !isSocial else { continue }
                         let name = (a.application.localizedDisplayName ?? "").lowercased()
                         let bundle = (a.application.bundleIdentifier ?? "").lowercased()
-                        if !isSocial {
-                            for kw in socialKW where name.contains(kw) || bundle.contains(kw) {
-                                isSocial = true
-                                break
-                            }
-                        }
+                        isSocial = socialKW.contains { name.contains($0) || bundle.contains($0) }
                     }
                     if isSocial { socialMinutes += catMinutes }
                 }
             }
         }
 
-        print("[PAKT CategoriesScene] social=\(socialMinutes)")
         if socialMinutes > 0 {
             writeToShared(key: "shared_social", value: socialMinutes)
             syncToBackendREST(socialMinutes: socialMinutes)

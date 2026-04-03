@@ -1,6 +1,41 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Swipe to dismiss wrapper (for fullScreenCover chat views)
+
+struct SwipeDismissView<Content: View>: View {
+    let content: Content
+    let onDismiss: () -> Void
+    @State private var offset: CGFloat = 0
+
+    init(@ViewBuilder content: () -> Content, onDismiss: @escaping () -> Void) {
+        self.content = content()
+        self.onDismiss = onDismiss
+    }
+
+    var body: some View {
+        content
+            .offset(x: offset)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        if value.translation.width > 0 {
+                            offset = value.translation.width
+                        }
+                    }
+                    .onEnded { value in
+                        if value.translation.width > 100 {
+                            withAnimation(.easeOut(duration: 0.2)) { offset = UIScreen.main.bounds.width }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { onDismiss() }
+                        } else {
+                            withAnimation(.easeOut(duration: 0.2)) { offset = 0 }
+                        }
+                    }
+            )
+            .background(Theme.bg.ignoresSafeArea())
+    }
+}
+
 // MARK: - Username cache (resolves empty names from Apple Sign In users)
 
 enum UsernameCache {
@@ -45,13 +80,26 @@ extension UIImage {
     }
 }
 
+// MARK: - Logger
+
+import os.log
+
+enum Log {
+    private static let logger = Logger(subsystem: "com.PAKT2", category: "app")
+
+    static func d(_ message: String) {
+        #if DEBUG
+        logger.debug("\(message, privacy: .public)")
+        #endif
+    }
+    static func i(_ message: String) { logger.info("\(message, privacy: .public)") }
+    static func e(_ message: String) { logger.error("\(message, privacy: .public)") }
+}
+
 // MARK: - Constants
 
 /// 16 waking hours × 60 = 960 minutes
 let kWakingMinutesPerDay: Double = 960.0
-
-/// App Group shared container ID
-let kAppGroupID = "group.com.PAKT2"
 
 enum AppConfig {
     static let keychainGroup = "9U5UZW39LQ.com.PAKT2"
@@ -319,19 +367,38 @@ struct StatBlock: View {
 
 // MARK: - Avatar
 
-// In-memory photo cache — avoids re-fetching the same photo dozens of times
+// In-memory + disk photo cache for avatars
 private var _photoCache: [String: UIImage] = [:]
 private let _photoCacheLock = NSLock()
 private var _photoFetching: Set<String> = []
+private var _photoFailedAt: [String: Date] = [:]  // track when fetch failed to allow retry
+private let _avatarCacheDir: URL? = {
+    let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("avatars")
+    if let dir { try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }
+    return dir
+}()
 
 func cachedPhoto(for uid: String) -> UIImage? {
     _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
-    return _photoCache[uid]
+    if let img = _photoCache[uid] { return img }
+    // Try disk cache
+    if let dir = _avatarCacheDir,
+       let data = try? Data(contentsOf: dir.appendingPathComponent("\(uid).jpg")),
+       let img = UIImage(data: data) {
+        _photoCache[uid] = img
+        return img
+    }
+    return nil
 }
 func cachePhoto(_ img: UIImage, for uid: String) {
     _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
     _photoCache[uid] = img
     _photoFetching.remove(uid)
+    _photoFailedAt.removeValue(forKey: uid)
+    // Save to disk
+    if let dir = _avatarCacheDir, let data = img.jpegData(compressionQuality: 0.7) {
+        try? data.write(to: dir.appendingPathComponent("\(uid).jpg"))
+    }
 }
 func isPhotoFetching(_ uid: String) -> Bool {
     _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
@@ -340,6 +407,37 @@ func isPhotoFetching(_ uid: String) -> Bool {
 func markPhotoFetching(_ uid: String) {
     _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
     _photoFetching.insert(uid)
+}
+func markPhotoFailed(_ uid: String) {
+    _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
+    _photoFetching.remove(uid)
+    _photoFailedAt[uid] = Date()
+}
+func shouldRetryPhoto(_ uid: String) -> Bool {
+    _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
+    guard let failedAt = _photoFailedAt[uid] else { return true }
+    // Retry after 60 seconds
+    return Date().timeIntervalSince(failedAt) > 60
+}
+func shouldRevalidatePhoto(_ uid: String) -> Bool {
+    guard let dir = _avatarCacheDir else { return true }
+    let file = dir.appendingPathComponent("\(uid).jpg")
+    guard let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
+          let modified = attrs[.modificationDate] as? Date else { return true }
+    // Revalidate if cached file is older than 5 minutes
+    return Date().timeIntervalSince(modified) > 300
+}
+
+/// Force clear all caches (for pull-to-refresh or debug)
+func clearAllPhotoCaches() {
+    _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
+    _photoCache.removeAll()
+    _photoFetching.removeAll()
+    _photoFailedAt.removeAll()
+    if let dir = _avatarCacheDir {
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
 }
 
 struct AvatarView: View {
@@ -350,7 +448,6 @@ struct AvatarView: View {
     var isMe  : Bool   = false
     @EnvironmentObject var appState: AppState
     @State private var remotePhoto: UIImage? = nil
-    @State private var didFetch = false
 
     var body: some View {
         ZStack {
@@ -370,30 +467,25 @@ struct AvatarView: View {
         .onAppear { loadPhoto() }
         .onChange(of: uid) { _ in
             remotePhoto = nil
-            didFetch = false
             loadPhoto()
         }
     }
 
     private func loadPhoto() {
         guard !isMe, !uid.isEmpty else { return }
-        // Always check cache first (photo may have been fetched by another AvatarView)
+        // Show cached photo immediately
         if let cached = cachedPhoto(for: uid) {
             if remotePhoto == nil { remotePhoto = cached }
-            return
         }
-        guard !didFetch, !isPhotoFetching(uid) else { return }
-        didFetch = true
+        // Revalidate from server if not already fetching and cache is stale
+        guard !isPhotoFetching(uid), shouldRevalidatePhoto(uid) else { return }
         markPhotoFetching(uid)
         Task {
             if let img = await AuthManager.shared.fetchProfilePhoto(uid: uid) {
                 cachePhoto(img, for: uid)
                 await MainActor.run { remotePhoto = img }
             } else {
-                // Mark as done even on failure to avoid infinite retries
-                _photoCacheLock.lock()
-                _photoFetching.remove(uid)
-                _photoCacheLock.unlock()
+                markPhotoFailed(uid)
             }
         }
     }

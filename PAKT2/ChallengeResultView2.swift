@@ -149,7 +149,7 @@ struct ChallengeResultView: View {
             HStack(spacing: 6) {
                 ForEach(0..<7, id: \.self) { i in
                     Capsule()
-                        .fill(i == currentSlide ? Color.white : Color.white.opacity(0.25))
+                        .fill(i == currentSlide ? Color.white : Color.white.opacity(0.45))
                         .frame(width: i == currentSlide ? 18 : 6, height: 6)
                         .animation(.easeInOut(duration: 0.3), value: currentSlide)
                 }

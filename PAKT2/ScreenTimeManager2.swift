@@ -2,7 +2,6 @@ import SwiftUI
 import Combine
 import FamilyControls
 import DeviceActivity
-import ManagedSettings
 import Security
 
 struct ProfileDayData: Identifiable {
@@ -46,10 +45,6 @@ final class ScreenTimeManager: ObservableObject {
 
     init() {
         isAuthorized = center.authorizationStatus == .approved
-        // Test: can we read what the extension writes?
-        let darDebug = keychainRead("debug_dar_last") ?? "never"
-        let sharedToday = keychainRead("shared_today") ?? "nil"
-        print("[PAKT] Keychain from extension: dar=\(darDebug) shared_today=\(sharedToday)")
         loadProfileCache()
         registerDarwinNotification()
     }
@@ -66,7 +61,7 @@ final class ScreenTimeManager: ObservableObject {
                 guard let observer else { return }
                 let mgr = Unmanaged<ScreenTimeManager>.fromOpaque(observer).takeUnretainedValue()
                 DispatchQueue.main.async {
-                    print("[PAKT] Darwin notification received — reloading profile cache")
+                    Log.d("[PAKT] Darwin notification received — reloading profile cache")
                     mgr.loadProfileCache()
                     mgr.updateLocalGroups(appState: AppState.shared)
                     mgr.syncToBackend(appState: AppState.shared)
@@ -177,7 +172,7 @@ final class ScreenTimeManager: ObservableObject {
         }
 
         let darDebug = keychainRead("dar_debug") ?? "never"
-        print("[PAKT loadProfileCache] today=\(profileToday)(\(todaySource)) social=\(categorySocial)(\(socialSource)) weekAvg=\(profileWeekAvg)(\(weekSource)) monthAvg=\(profileMonthAvg)(\(monthSource)) | DAR=\(darDebug)")
+        Log.d("[PAKT loadProfileCache] today=\(profileToday)(\(todaySource)) social=\(categorySocial)(\(socialSource)) weekAvg=\(profileWeekAvg)(\(weekSource)) monthAvg=\(profileMonthAvg)(\(monthSource)) | DAR=\(darDebug)")
 
         // Si on a récupéré des données via fallback, les sauver dans le cache standard + sync
         if profileToday > 0 && UserDefaults.standard.string(forKey: UDKey.todayDate) != today {
@@ -235,26 +230,29 @@ final class ScreenTimeManager: ObservableObject {
     /// Injecte le score du jour dans l'historique existant (appelé depuis onOpenURL screentime)
     func injectTodayIntoHistory(date: String, minutes: Int) {
         let existing = UserDefaults.standard.string(forKey: UDKey.historyRaw) ?? ""
-        var byDate: [String: Int] = [:]
-        for entry in existing.split(separator: ",") {
-            let parts = entry.split(separator: ":")
-            guard parts.count == 2, let m = Int(parts[1]), m > 0 else { continue }
-            byDate[String(parts[0])] = m
-        }
+        var byDate = parseHistoryCSV(existing)
         byDate[date] = max(byDate[date] ?? 0, minutes)
         let raw = byDate.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: ",")
         UserDefaults.standard.set(raw, forKey: UDKey.historyRaw)
         rebuildHistory(from: raw)
     }
 
+    /// Parse "2026-03-01:120,2026-03-02:90" → ["2026-03-01": 120, "2026-03-02": 90]
+    private func parseHistoryCSV(_ raw: String) -> [String: Int] {
+        var byDate: [String: Int] = [:]
+        for entry in raw.split(separator: ",") {
+            let parts = entry.split(separator: ":")
+            guard parts.count == 2, let m = Int(parts[1]), m > 0 else { continue }
+            byDate[String(parts[0])] = m
+        }
+        return byDate
+    }
+
     private func mergeHistoryRaw(_ sources: [String]) -> String {
         var byDate: [String: Int] = [:]
         for source in sources {
-            for entry in source.split(separator: ",") {
-                let parts = entry.split(separator: ":")
-                guard parts.count == 2, let m = Int(parts[1]), m > 0 else { continue }
-                let key = String(parts[0])
-                byDate[key] = max(byDate[key] ?? 0, m)
+            for (date, mins) in parseHistoryCSV(source) {
+                byDate[date] = max(byDate[date] ?? 0, mins)
             }
         }
         guard !byDate.isEmpty else { return "" }
@@ -262,13 +260,7 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     private func rebuildHistory(from raw: String) {
-        var byDate: [String: Int] = [:]
-        for entry in raw.split(separator: ",") {
-            let parts = entry.split(separator: ":")
-            guard parts.count == 2, let m = Int(parts[1]) else { continue }
-            byDate[String(parts[0])] = m
-        }
-        buildHistoryFromMap(byDate)
+        buildHistoryFromMap(parseHistoryCSV(raw))
     }
 
     private func buildEmptyHistory() { buildHistoryFromMap([:]) }
@@ -300,14 +292,14 @@ final class ScreenTimeManager: ObservableObject {
     @MainActor
     func requestAuthorization() async {
         let rawStatus = center.authorizationStatus.rawValue
-        print("[PAKT Auth] Current status: \(rawStatus)")
+        Log.d("[PAKT Auth] Current status: \(rawStatus)")
         authError = nil
 
         // Si déjà approuvé, juste rafraîchir
         if center.authorizationStatus == .approved {
             self.isAuthorized = true
             self.startBackgroundMonitoring()
-            print("[PAKT Auth] Already approved — monitoring started")
+            Log.d("[PAKT Auth] Already approved — monitoring started")
             return
         }
 
@@ -316,10 +308,10 @@ final class ScreenTimeManager: ObservableObject {
             try await center.requestAuthorization(for: .individual)
             self.isAuthorized = true
             self.authError = nil
-            print("[PAKT Auth] Authorized!")
+            Log.d("[PAKT Auth] Authorized!")
             self.startBackgroundMonitoring()
         } catch {
-            print("[PAKT Auth] Failed: \(error)")
+            Log.d("[PAKT Auth] Failed: \(error)")
             self.isAuthorized = false
             self.authError = error.localizedDescription
         }
@@ -358,9 +350,9 @@ final class ScreenTimeManager: ObservableObject {
                 during: schedule,
                 events: events
             )
-            print("[PAKT Monitor] Background monitoring started with \(events.count) thresholds")
+            Log.d("[PAKT Monitor] Background monitoring started with \(events.count) thresholds")
         } catch {
-            print("[PAKT Monitor] Failed to start monitoring: \(error)")
+            Log.d("[PAKT Monitor] Failed to start monitoring: \(error)")
         }
     }
 
@@ -458,7 +450,7 @@ final class ScreenTimeManager: ObservableObject {
                 // Cache les usernames et debug
                 for s in scores where s.date == todayStr {
                     if let name = s.username, !name.isEmpty { UsernameCache.store(uid: s.userId, name: name) }
-                    print("[PAKT Scores] user=\(s.userId.prefix(8)) date=\(s.date) mins=\(s.minutes) social=\(s.socialMinutes)")
+                    Log.d("[PAKT Scores] user=\(s.userId.prefix(8)) date=\(s.date) mins=\(s.minutes) social=\(s.socialMinutes)")
                 }
 
                 var byUser: [String: [String: (total: Int, social: Int)]] = [:]
@@ -553,12 +545,7 @@ final class ScreenTimeManager: ObservableObject {
                 await MainActor.run {
                     // Historique : charger l'existant (alimenté par les DARs)
                     let existing = UserDefaults.standard.string(forKey: UDKey.historyRaw) ?? ""
-                    var byDate: [String: Int] = [:]
-                    for entry in existing.split(separator: ",") {
-                        let parts = entry.split(separator: ":")
-                        guard parts.count == 2, let m = Int(parts[1]), m > 0 else { continue }
-                        byDate[String(parts[0])] = m
-                    }
+                    var byDate = self.parseHistoryCSV(existing)
 
                     // Le DAR WeekChart couvre les 7 derniers jours — ne pas écraser avec le backend
                     let sevenDaysAgo = df.string(from: cal.date(byAdding: .day, value: -7, to: Date()) ?? Date())
