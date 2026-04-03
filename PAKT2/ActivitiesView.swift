@@ -1200,25 +1200,25 @@ struct ConversationView: View {
             }
             .navigationViewStyle(.stack)
         }
-        .confirmationDialog("Delete message", isPresented: Binding(
+        .confirmationDialog(L10n.t("delete"), isPresented: Binding(
             get: { messageToDelete != nil },
             set: { if !$0 { messageToDelete = nil } }
         ), titleVisibility: .visible) {
-            Button("Delete for me", role: .destructive) {
+            Button(L10n.t("delete_for_me"), role: .destructive) {
                 if let msg = messageToDelete {
                     withAnimation { manager.deleteMessageForMe(msg.id) }
                 }
                 messageToDelete = nil
             }
             if messageToDelete?.isFromMe == true {
-                Button("Delete for everyone", role: .destructive) {
+                Button(L10n.t("delete_for_everyone"), role: .destructive) {
                     if let msg = messageToDelete {
                         withAnimation { manager.deleteMessageForEveryone(msg.id) }
                     }
                     messageToDelete = nil
                 }
             }
-            Button("Cancel", role: .cancel) { messageToDelete = nil }
+            Button(L10n.t("cancel"), role: .cancel) { messageToDelete = nil }
         }
         .onAppear {
             localMessages = manager.messagesWithFriend(friendUid)

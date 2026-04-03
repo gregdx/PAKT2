@@ -246,11 +246,11 @@ struct EditGroupView: View {
             name = group.name
             groupImage = appState.loadGroupImage(for: group.id)
         }
-        .confirmationDialog("Delete \"\(group.name)\"?", isPresented: $showDelete, titleVisibility: .visible) {
+        .confirmationDialog("\(L10n.t("delete")) \"\(group.name)\"?", isPresented: $showDelete, titleVisibility: .visible) {
             Button(L10n.t("delete_group"), role: .destructive) { appState.deleteGroup(group); dismiss() }
             Button(L10n.t("cancel"), role: .cancel) {}
         } message: { Text(L10n.t("delete_group_warn")) }
-        .confirmationDialog("Leave \"\(group.name)\"?", isPresented: $showLeave, titleVisibility: .visible) {
+        .confirmationDialog("\(L10n.t("leave_group")) \"\(group.name)\"?", isPresented: $showLeave, titleVisibility: .visible) {
             Button(L10n.t("leave_group"), role: .destructive) { appState.leaveGroup(group); dismiss() }
             Button(L10n.t("cancel"), role: .cancel) {}
         } message: { Text(L10n.t("leave_group_warn")) }

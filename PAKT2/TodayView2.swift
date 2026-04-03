@@ -49,6 +49,7 @@ struct TodayView: View {
     @State private var selectedCategory: ActCategory? = nil
 
     var body: some View {
+        GeometryReader { outerGeo in
         ZStack {
             Theme.bg.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
@@ -68,7 +69,7 @@ struct TodayView: View {
                             .foregroundColor(Theme.textFaint)
                             .padding(.bottom, 20)
                     }
-                    .frame(minHeight: UIScreen.main.bounds.height - 160)
+                    .frame(minHeight: outerGeo.size.height - 100)
                     .padding(.horizontal, 32)
                     .onAppear { showInitialQuote() }
                     .background(
@@ -113,6 +114,7 @@ struct TodayView: View {
                 }
             }
         }
+        } // GeometryReader
     }
 
     // MARK: - Category pill

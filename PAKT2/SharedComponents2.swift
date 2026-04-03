@@ -25,7 +25,7 @@ struct SwipeDismissView<Content: View>: View {
                     }
                     .onEnded { value in
                         if value.translation.width > 100 {
-                            withAnimation(.easeOut(duration: 0.2)) { offset = UIScreen.main.bounds.width }
+                            withAnimation(.easeOut(duration: 0.2)) { offset = 500 }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { onDismiss() }
                         } else {
                             withAnimation(.easeOut(duration: 0.2)) { offset = 0 }
