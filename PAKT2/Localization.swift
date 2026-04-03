@@ -225,6 +225,8 @@ enum L10n {
         "type_message":         "Message...",
         "proposal_mine":        "How about {activity}?",
         "proposal_theirs":      "Wants to {activity}",
+        "proposal_mine_short":  "Want to do this together?",
+        "proposal_theirs_short": "wants to do this with you",
         "resp_lets_go":         "Let's go!",
         "resp_cant_now":        "Can't rn",
         "resp_rather_scroll":   "I'd rather scroll",

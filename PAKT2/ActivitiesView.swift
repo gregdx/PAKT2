@@ -1397,59 +1397,86 @@ struct ConversationView: View {
     // MARK: - Activity proposal card
 
     private func activityProposalCard(_ msg: ChatMessage, isMine: Bool) -> some View {
-        let actLabel = (msg.activityTitle ?? "").lowercased()
-        let proposal = isMine
-            ? L10n.t("proposal_mine").replacingOccurrences(of: "{activity}", with: actLabel)
-            : L10n.t("proposal_theirs").replacingOccurrences(of: "{activity}", with: actLabel)
+        let emoji = msg.activityEmoji ?? "🎯"
+        let title = msg.activityTitle ?? ""
 
-        return VStack(alignment: .leading, spacing: 8) {
-            // Emoji + title row
-            HStack(spacing: 8) {
-                Text(msg.activityEmoji ?? "")
-                    .font(.system(size: 22))
-                Text(msg.activityTitle ?? "")
-                    .font(.system(size: 16, weight: .bold))
+        return VStack(spacing: 0) {
+            // Header — big emoji + activity name
+            VStack(spacing: 10) {
+                Text(emoji)
+                    .font(.system(size: 44))
+                Text(title)
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundColor(Theme.text)
+                    .multilineTextAlignment(.center)
+                Text(isMine ? L10n.t("proposal_mine_short") : L10n.t("proposal_theirs_short"))
+                    .font(.system(size: 14))
+                    .foregroundColor(Theme.textMuted)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 20)
+            .padding(.horizontal, 16)
 
-            Text(proposal)
-                .font(.system(size: 14))
-                .foregroundColor(Theme.textMuted)
-
-            // Response badge
+            // Response badge (if already responded)
             if let resp = msg.proposalResponse {
-                HStack(spacing: 4) {
-                    Image(systemName: resp.icon).font(.system(size: 13))
-                    Text(resp.label).font(.system(size: 12, weight: .semibold))
+                HStack(spacing: 6) {
+                    Image(systemName: resp.icon).font(.system(size: 14))
+                    Text(resp.label).font(.system(size: 14, weight: .bold))
                 }
                 .foregroundColor(resp.color)
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .background(resp.color.opacity(0.1))
-                .cornerRadius(10)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(resp.color.opacity(0.08))
             }
 
             // Response buttons (only for received proposals with no response yet)
             if !isMine && msg.response == nil {
-                HStack(spacing: 6) {
-                    ForEach(ProposalResponse.allCases, id: \.rawValue) { resp in
-                        Button(action: {
-                            withAnimation { manager.respond(msg, with: resp) }
-                        }) {
-                            HStack(spacing: 3) {
-                                Image(systemName: resp.icon).font(.system(size: 12))
-                                Text(resp.label).font(.system(size: 13, weight: .semibold))
+                VStack(spacing: 0) {
+                    Rectangle().fill(Theme.separator).frame(height: 0.5)
+                    // Let's go — big primary button
+                    Button(action: { withAnimation { manager.respond(msg, with: .letsGo) } }) {
+                        HStack(spacing: 6) {
+                            Text("🤝")
+                            Text(L10n.t("resp_lets_go"))
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                        .foregroundColor(Theme.bg)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Theme.text)
+                    }
+
+                    Rectangle().fill(Theme.separator).frame(height: 0.5)
+
+                    // Secondary options
+                    HStack(spacing: 0) {
+                        Button(action: { withAnimation { manager.respond(msg, with: .cantNow) } }) {
+                            Text(L10n.t("resp_cant_now"))
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Theme.textMuted)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        }
+
+                        Rectangle().fill(Theme.separator).frame(width: 0.5, height: 20)
+
+                        Button(action: { withAnimation { manager.respond(msg, with: .ratherScroll) } }) {
+                            HStack(spacing: 4) {
+                                Text("📱")
+                                    .font(.system(size: 12))
+                                Text(L10n.t("resp_rather_scroll"))
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(Theme.textFaint)
                             }
-                            .foregroundColor(resp == .letsGo ? .white : resp.color)
-                            .padding(.vertical, 7).padding(.horizontal, 9)
-                            .background(resp == .letsGo ? resp.color : resp.color.opacity(0.1))
-                            .cornerRadius(10)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
                         }
                     }
                 }
             }
         }
-        .padding(14)
-        .liquidGlass(cornerRadius: 16)
+        .liquidGlass(cornerRadius: 20)
+        .frame(maxWidth: 280)
     }
 
 }
