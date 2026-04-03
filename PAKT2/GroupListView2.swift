@@ -38,13 +38,11 @@ struct GroupsListView: View {
                 }
             }
             .navigationBarHidden(true)
-            .sheet(item: $selectedGroupId) { gid in
-                NavigationView {
+            .fullScreenCover(item: $selectedGroupId) { gid in
+                SwipeDismissView {
                     GroupDetailView(groupId: gid, isSheet: true)
                         .environmentObject(appState)
-                }
-                .navigationViewStyle(.stack)
-                .presentationDragIndicator(.visible)
+                } onDismiss: { selectedGroupId = nil }
             }
             .sheet(isPresented: $showCreate) {
                 CreateGroupView().environmentObject(appState)

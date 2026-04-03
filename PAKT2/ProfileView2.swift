@@ -216,14 +216,12 @@ struct ProfileView: View {
         }) {
             SettingsView().environmentObject(appState)
         }
-        .sheet(isPresented: $showGroupDetail) {
+        .fullScreenCover(isPresented: $showGroupDetail) {
             if let gid = selectedGroupId {
-                NavigationView {
+                SwipeDismissView {
                     GroupDetailView(groupId: gid, isSheet: true)
                         .environmentObject(appState)
-                }
-                .navigationViewStyle(.stack)
-                .presentationDragIndicator(.visible)
+                } onDismiss: { showGroupDetail = false }
             }
         }
         .onChange(of: scenePhase) { phase in

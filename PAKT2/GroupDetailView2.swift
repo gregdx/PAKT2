@@ -137,10 +137,12 @@ struct GroupDetailView: View {
                 showResult = true
             }
         }
-        .sheet(isPresented: $showGroupChat) {
+        .fullScreenCover(isPresented: $showGroupChat) {
             if groupOpt != nil {
-                GroupChatView(group: group)
-                    .environmentObject(appState)
+                SwipeDismissView {
+                    GroupChatView(group: group)
+                        .environmentObject(appState)
+                } onDismiss: { showGroupChat = false }
             }
         }
         .sheet(isPresented: $showEdit) {
