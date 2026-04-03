@@ -1229,39 +1229,32 @@ struct ConversationView: View {
     // MARK: - Header
 
     private var conversationHeader: some View {
-        HStack(spacing: 12) {
-            Button(action: { onClose?() }) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Theme.text)
-            }
-            Button(action: { showFriendProfile = true }) {
-                HStack(spacing: 12) {
-                    AvatarView(name: friendName, size: 38, color: Theme.textMuted,
-                               uid: friendUid, isMe: false)
-                        .environmentObject(appState)
-                    Text(friendName)
+        Button(action: { showFriendProfile = true }) {
+            HStack(spacing: 12) {
+                Button(action: { onClose?() }) {
+                    Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(Theme.text)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12))
-                        .foregroundColor(Theme.textFaint)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .liquidGlass(cornerRadius: 16)
+                AvatarView(name: friendName, size: 34, color: Theme.textMuted,
+                           uid: friendUid, isMe: false)
+                    .environmentObject(appState)
+                Text(friendName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.text)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.textFaint)
             }
-            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .liquidGlass(cornerRadius: 16)
         }
+        .buttonStyle(PlainButtonStyle())
         .padding(.horizontal, 16)
         .padding(.top, 56)
-        .padding(.bottom, 10)
-        .background(
-            Theme.bg.opacity(0.85)
-                .overlay(.ultraThinMaterial)
-                .ignoresSafeArea(edges: .top)
-        )
+        .padding(.bottom, 6)
     }
 
     // MARK: - Input bar
