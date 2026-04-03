@@ -1133,6 +1133,8 @@ struct ConversationView: View {
                             .padding(.top, 60)
                         }
 
+                        // Space for floating input bar
+                        Spacer().frame(height: 80)
                         Color.clear.frame(height: 1).id("bottom")
                     }
                     .padding(.horizontal, 12)
@@ -1149,11 +1151,10 @@ struct ConversationView: View {
                 .onTapGesture { isTextFocused = false }
             }
 
-            // Input bar
-            inputBar
         }
         .background(Theme.bg)
         .overlay(alignment: .top) { conversationHeader }
+        .overlay(alignment: .bottom) { inputBar }
         .sheet(isPresented: $showActivityPicker) {
             ActivityPickerSheet(friendUid: friendUid).environmentObject(appState)
         }
@@ -1260,36 +1261,31 @@ struct ConversationView: View {
     // MARK: - Input bar
 
     private var inputBar: some View {
-        VStack(spacing: 0) {
-            Rectangle().fill(Theme.separator).frame(height: 0.5)
-            HStack(spacing: 8) {
-                Button(action: { isTextFocused = false; showActivityPicker = true }) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(Theme.textMuted)
-                }
-
-                HStack(spacing: 6) {
-                    TextField(L10n.t("type_message"), text: $textInput)
-                        .font(.system(size: 15))
-                        .foregroundColor(Theme.text)
-                        .focused($isTextFocused)
-                        .submitLabel(.send)
-                        .onSubmit { sendText() }
-                    if !textInput.isEmpty {
-                        Button(action: sendText) {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 26))
-                                .foregroundColor(Theme.text)
-                        }
-                    }
-                }
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .liquidGlass(cornerRadius: 20)
+        HStack(spacing: 10) {
+            Button(action: { isTextFocused = false; showActivityPicker = true }) {
+                Image(systemName: "plus")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.textMuted)
             }
-            .padding(.horizontal, 12).padding(.vertical, 8)
+            TextField(L10n.t("type_message"), text: $textInput)
+                .font(.system(size: 15))
+                .foregroundColor(Theme.text)
+                .focused($isTextFocused)
+                .submitLabel(.send)
+                .onSubmit { sendText() }
+            if !textInput.isEmpty {
+                Button(action: sendText) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(Theme.text)
+                }
+            }
         }
-        .background(Theme.bg)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .liquidGlass(cornerRadius: 20)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 34)
     }
 
     // MARK: - Send text
