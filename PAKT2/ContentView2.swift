@@ -109,14 +109,16 @@ struct ContentView: View {
                 }
 
                 TabView(selection: $selectedTab) {
-                    GroupsListView(selectedTab: $selectedTab).environmentObject(appState)
-                        .tag(0)
                     ActivitiesView().environmentObject(appState)
+                        .tag(0)
+                    GroupsListView(selectedTab: $selectedTab).environmentObject(appState)
                         .tag(1)
                     TodayView().environmentObject(appState)
                         .tag(2)
-                    ProfileView().environmentObject(appState)
+                    NearYouView().environmentObject(appState)
                         .tag(3)
+                    ProfileView().environmentObject(appState)
+                        .tag(4)
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                 .animation(.easeInOut(duration: 0.25), value: selectedTab)
@@ -124,13 +126,15 @@ struct ContentView: View {
 
             HStack {
                 Spacer()
-                tabIcon("person.2",    index: 0)
+                tabIcon("bubble.left.and.bubble.right", index: 0)
                 Spacer()
-                tabIcon("figure.walk", index: 1)
+                tabIcon("person.2",    index: 1)
                 Spacer()
                 tabIcon("sun.max",     index: 2)
                 Spacer()
-                tabIcon("person",      index: 3)
+                tabIcon("mappin.and.ellipse", index: 3)
+                Spacer()
+                tabIcon("person",      index: 4)
                 Spacer()
             }
             .padding(.vertical, 14).padding(.bottom, 20)
@@ -221,11 +225,11 @@ struct ContentView: View {
     }
 
     func tabIcon(_ icon: String, index: Int) -> some View {
-        let labels = ["Groups", "Activities", "Today", "Profile"]
+        let labels = ["Messages", "Groups", "Today", "Near you", "Profile"]
         let isSelected = selectedTab == index
         return Button(action: { withAnimation(.easeInOut(duration: 0.2)) { selectedTab = index } }) {
             VStack(spacing: 5) {
-                if index == 3 {
+                if index == 4 {
                     // Profile tab — show user photo
                     if let img = appState.profileUIImage {
                         Image(uiImage: img)
