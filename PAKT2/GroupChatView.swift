@@ -139,7 +139,7 @@ struct GroupChatView: View {
                             Button(action: sendText) {
                                 Image(systemName: "arrow.up.circle.fill")
                                     .font(.system(size: 26))
-                                    .foregroundColor(Theme.green)
+                                    .foregroundColor(Theme.text)
                             }
                         }
                     }
@@ -259,7 +259,7 @@ struct GroupChatView: View {
 
     func groupMessageBubble(_ msg: ChatMessage, index: Int) -> some View {
         let isMine = msg.fromId == myUid
-        let senderName = isMine ? "You" : UsernameCache.resolve(uid: msg.fromId, name: msg.fromName)
+        let senderName = isMine ? L10n.t("you") : UsernameCache.resolve(uid: msg.fromId, name: msg.fromName)
         let isFirst = isFirstInGroup(index)
         let isLast = isLastInGroup(index)
 
@@ -286,9 +286,9 @@ struct GroupChatView: View {
                 }
                 Text(msg.text ?? "")
                     .font(.system(size: 15))
-                    .foregroundColor(isMine ? .white : Theme.text)
+                    .foregroundColor(isMine ? Theme.bg : Theme.text)
                     .padding(.horizontal, 14).padding(.vertical, 9)
-                    .background(isMine ? Theme.green : Theme.bgWarm)
+                    .background(isMine ? Theme.text : Theme.bgWarm)
                     .clipShape(BubbleShape(isMine: isMine, isFirst: isFirst, isLast: isLast))
                     .contextMenu {
                         if let text = msg.text {

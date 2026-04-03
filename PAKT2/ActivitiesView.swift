@@ -917,7 +917,7 @@ struct ActivitiesView: View {
                         if let last {
                             Text(timeAgo(last.createdAt))
                                 .font(.system(size: 12))
-                                .foregroundColor(hasUnread ? Theme.green : Theme.textFaint)
+                                .foregroundColor(hasUnread ? Theme.text : Theme.textFaint)
                         }
                     }
 
@@ -949,7 +949,7 @@ struct ActivitiesView: View {
                         // Unread dot or seen avatar
                         if hasUnread {
                             Circle()
-                                .fill(Theme.green)
+                                .fill(Theme.text)
                                 .frame(width: 10, height: 10)
                         } else if let last, last.isFromMe && seen {
                             AvatarView(name: name, size: 16, color: Theme.textMuted, uid: uid, isMe: false)
@@ -1249,7 +1249,7 @@ struct ConversationView: View {
                 Button(action: { isTextFocused = false; showActivityPicker = true }) {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 28))
-                        .foregroundColor(Theme.green)
+                        .foregroundColor(Theme.textMuted)
                 }
 
                 HStack(spacing: 6) {
@@ -1263,7 +1263,7 @@ struct ConversationView: View {
                         Button(action: sendText) {
                             Image(systemName: "arrow.up.circle.fill")
                                 .font(.system(size: 26))
-                                .foregroundColor(Theme.green)
+                                .foregroundColor(Theme.text)
                         }
                     }
                 }
@@ -1348,13 +1348,13 @@ struct ConversationView: View {
                     activityProposalCard(msg, isMine: isMine)
                         .contextMenu { messageContextMenu(msg) }
                 } else {
-                    // Text bubble with Messenger-style corners
+                    // Text bubble
                     Text(msg.text ?? "")
                         .font(.system(size: 15))
-                        .foregroundColor(isMine ? .white : Theme.text)
+                        .foregroundColor(isMine ? Theme.bg : Theme.text)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 9)
-                        .background(isMine ? Theme.green : Theme.bgWarm)
+                        .background(isMine ? Theme.text : Theme.bgWarm)
                         .clipShape(BubbleShape(
                             isMine: isMine,
                             isFirst: isFirst,
@@ -1443,7 +1443,7 @@ struct ConversationView: View {
             }
         }
         .padding(14)
-        .background(isMine ? Theme.green.opacity(0.08) : Theme.bgWarm)
+        .background(isMine ? Theme.text.opacity(0.06) : Theme.bgWarm)
         .cornerRadius(16)
     }
 
