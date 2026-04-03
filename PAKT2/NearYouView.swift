@@ -421,12 +421,13 @@ struct InviteFriendSheet: View {
                     VStack(spacing: 10) {
                         ForEach(friends) { friend in
                             Button(action: {
-                                manager.sendActivity(
-                                    title: venue.name,
+                                let activity = Activity(
                                     emoji: "📍",
-                                    toUid: friend.id,
-                                    toName: friend.firstName
+                                    titleEN: venue.name, titleFR: venue.name,
+                                    subtitleEN: venue.address, subtitleFR: venue.address,
+                                    category: .outdoor, people: "2"
                                 )
+                                manager.sendActivity(activity, toFriendId: friend.id)
                                 dismiss()
                             }) {
                                 HStack(spacing: 14) {
