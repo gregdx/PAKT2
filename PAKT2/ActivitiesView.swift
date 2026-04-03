@@ -602,8 +602,6 @@ struct ActivitiesView: View {
     @State private var activeChat: ChatDestination? = nil
     @State private var showNewConversation = false
     @State private var selectedTab: MessageTab = .friends
-    @State private var searchText = ""
-    @State private var isSearching = false
     @State private var showArchived = false
 
     var body: some View {
@@ -617,7 +615,6 @@ struct ActivitiesView: View {
                     if showArchived {
                         archivedSection
                     } else {
-                        searchBar
                         tabSelector
 
                         switch selectedTab {
@@ -676,110 +673,64 @@ struct ActivitiesView: View {
                 }
             }
             Text(showArchived ? L10n.t("archive") : L10n.t("activities_title"))
-                .font(.system(size: 34, weight: .bold))
+                .font(.system(size: 28, weight: .bold))
                 .foregroundColor(Theme.text)
             Spacer()
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 if !showArchived {
-                    // Archived button
                     let archivedCount = manager.archivedConversationUids().count
                     if archivedCount > 0 {
                         Button(action: { withAnimation { showArchived = true } }) {
                             Image(systemName: "archivebox")
-                                .font(.system(size: 16))
+                                .font(.system(size: 15))
                                 .foregroundColor(Theme.textMuted)
-                                .frame(width: 40, height: 40)
+                                .frame(width: 36, height: 36)
                                 .liquidGlass(cornerRadius: 10)
                         }
                     }
                 }
                 Button(action: { showNewConversation = true }) {
                     Image(systemName: "square.and.pencil")
-                        .font(.system(size: 17))
+                        .font(.system(size: 15))
                         .foregroundColor(Theme.textMuted)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 36, height: 36)
                         .liquidGlass(cornerRadius: 10)
                 }
             }
         }
         .padding(.horizontal, 24)
-        .padding(.top, 64)
-        .padding(.bottom, 12)
+        .padding(.top, 60)
+        .padding(.bottom, 16)
     }
 
-    // MARK: - Search bar
-
-    private var searchBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 15))
-                .foregroundColor(Theme.textFaint)
-            TextField(L10n.t("search_friends"), text: $searchText)
-                .font(.system(size: 16))
-                .foregroundColor(Theme.text)
-                .autocapitalization(.none)
-                .disableAutocorrection(true)
-                .onTapGesture { withAnimation { isSearching = true } }
-
-            if !searchText.isEmpty {
-                Button(action: { searchText = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 15))
-                        .foregroundColor(Theme.textFaint)
-                }
-            } else if isSearching {
-                Button(L10n.t("cancel")) {
-                    withAnimation { isSearching = false }
-                    searchText = ""
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-                .font(.system(size: 15))
-                .foregroundColor(Theme.textMuted)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .liquidGlass(cornerRadius: 12)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 12)
-    }
-
-    // MARK: - Tab selector
+    // MARK: - Tab selector (moved above search)
 
     private var tabSelector: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 8) {
             ForEach(MessageTab.allCases, id: \.self) { tab in
                 Button(action: { withAnimation(.easeInOut(duration: 0.2)) { selectedTab = tab } }) {
-                    VStack(spacing: 8) {
-                        Text(tab.label)
-                            .font(.system(size: 15, weight: selectedTab == tab ? .bold : .medium))
-                            .foregroundColor(selectedTab == tab ? Theme.text : Theme.textMuted)
-                        Rectangle()
-                            .fill(selectedTab == tab ? Theme.text : Color.clear)
-                            .frame(height: 2)
-                    }
+                    Text(tab.label)
+                        .font(.system(size: 15, weight: selectedTab == tab ? .semibold : .regular))
+                        .foregroundColor(selectedTab == tab ? Theme.bg : Theme.textMuted)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 20)
+                        .background(selectedTab == tab ? Theme.text : Color.clear)
+                        .cornerRadius(20)
+                        .liquidGlass(cornerRadius: selectedTab == tab ? 0 : 20)
                 }
-                .frame(maxWidth: .infinity)
             }
+            Spacer()
         }
         .padding(.horizontal, 24)
-        .padding(.bottom, 16)
+        .padding(.bottom, 20)
     }
 
     // MARK: - Friends tab
 
     private var friendsList: some View {
-        let convUids = searchText.isEmpty
-            ? manager.activeConversationUids()
-            : manager.activeConversationUids().filter { uid in
-                let name = fm.friends.first { $0.id == uid }?.firstName
-                    ?? manager.messagesWithFriend(uid).last(where: { $0.fromId == uid })?.fromName ?? ""
-                return name.lowercased().contains(searchText.lowercased())
-                    || manager.messagesWithFriend(uid).contains { ($0.text ?? "").lowercased().contains(searchText.lowercased()) }
-            }
+        let convUids = manager.activeConversationUids()
         let otherFriends = fm.friends.filter { f in
             !manager.conversationUids().contains(f.id)
-            && (searchText.isEmpty || f.firstName.lowercased().contains(searchText.lowercased()))
         }
 
         return VStack(spacing: 0) {
@@ -795,14 +746,15 @@ struct ActivitiesView: View {
                 .padding(.top, 60)
             } else {
                 // Active conversations (sorted by most recent)
-                VStack(spacing: 0) {
+                VStack(spacing: 10) {
                     ForEach(convUids, id: \.self) { uid in
                         conversationCard(uid: uid)
                     }
                 }
+                .padding(.horizontal, 20)
 
                 // Friends with no conversation yet
-                if !otherFriends.isEmpty && !isSearching {
+                if !otherFriends.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         SectionTitle(text: L10n.t("start_conversation"))
                             .padding(.top, 28)
@@ -865,8 +817,6 @@ struct ActivitiesView: View {
             let last1 = manager.messagesForGroup(g1.id.uuidString).last?.createdAt ?? .distantPast
             let last2 = manager.messagesForGroup(g2.id.uuidString).last?.createdAt ?? .distantPast
             return last1 > last2
-        }.filter { group in
-            searchText.isEmpty || group.name.lowercased().contains(searchText.lowercased())
         }
 
         return VStack(spacing: 0) {
@@ -881,12 +831,15 @@ struct ActivitiesView: View {
                 }
                 .padding(.top, 60)
             } else {
-                ForEach(sortedGroups) { group in
-                    Button(action: { activeChat = .group(id: group.id) }) {
-                        groupChatCard(group)
+                VStack(spacing: 10) {
+                    ForEach(sortedGroups) { group in
+                        Button(action: { activeChat = .group(id: group.id) }) {
+                            groupChatCard(group)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
-                    .buttonStyle(PlainButtonStyle())
                 }
+                .padding(.horizontal, 20)
             }
         }
     }
@@ -922,12 +875,12 @@ struct ActivitiesView: View {
 
                 HStack(spacing: 4) {
                     if let last = lastMsg, let text = last.text {
-                        Text(last.isFromMe ? "You: \(text)" : "\(last.fromName): \(text)")
+                        Text(last.isFromMe ? "\(L10n.t("you")): \(text)" : "\(last.fromName): \(text)")
                             .font(.system(size: 14))
                             .foregroundColor(Theme.textMuted)
                             .lineLimit(1)
                     } else {
-                        Text("\(group.members.count) members")
+                        Text("\(group.members.count) \(L10n.t("members_count"))")
                             .font(.system(size: 14))
                             .foregroundColor(Theme.textFaint)
                     }
@@ -935,8 +888,9 @@ struct ActivitiesView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .liquidGlass(cornerRadius: 16)
     }
 
     // MARK: - Conversation card with swipe actions
@@ -979,7 +933,7 @@ struct ActivitiesView: View {
                                         .lineLimit(1)
                                 }
                             } else if let text = last.text {
-                                Text(last.isFromMe ? "You: \(text)" : text)
+                                Text(last.isFromMe ? "\(L10n.t("you")): \(text)" : text)
                                     .font(.system(size: 14, weight: hasUnread ? .medium : .regular))
                                     .foregroundColor(hasUnread ? Theme.text : Theme.textMuted)
                                     .lineLimit(1)
@@ -1004,9 +958,11 @@ struct ActivitiesView: View {
                     }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .liquidGlass(cornerRadius: 16)
         }
+        .buttonStyle(PlainButtonStyle())
         .contextMenu {
             if isArchived {
                 Button {
