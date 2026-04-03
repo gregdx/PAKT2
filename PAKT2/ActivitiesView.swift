@@ -567,13 +567,6 @@ final class ActivityManager: ObservableObject {
     }
 }
 
-// MARK: - Picked friend helper
-
-struct PickedFriend: Identifiable, Hashable {
-    let id = UUID()
-    let uid: String
-    let name: String
-}
 
 // MARK: - Chat destination
 
@@ -591,9 +584,15 @@ enum ChatDestination: Identifiable, Hashable {
 
 // MARK: - Conversations list
 
-enum MessageTab: String, CaseIterable {
-    case friends = "Friends"
-    case groups = "Groups"
+enum MessageTab: CaseIterable {
+    case friends, groups
+
+    var label: String {
+        switch self {
+        case .friends: return L10n.t("friends")
+        case .groups:  return L10n.t("groups")
+        }
+    }
 }
 
 struct ActivitiesView: View {
@@ -752,7 +751,7 @@ struct ActivitiesView: View {
             ForEach(MessageTab.allCases, id: \.self) { tab in
                 Button(action: { withAnimation(.easeInOut(duration: 0.2)) { selectedTab = tab } }) {
                     VStack(spacing: 8) {
-                        Text(tab.rawValue)
+                        Text(tab.label)
                             .font(.system(size: 15, weight: selectedTab == tab ? .bold : .medium))
                             .foregroundColor(selectedTab == tab ? Theme.text : Theme.textMuted)
                         Rectangle()
@@ -1079,18 +1078,6 @@ struct ActivitiesView: View {
         }
     }
 
-    // MARK: - Time ago helper
-
-    private func timeAgo(_ date: Date) -> String {
-        let mins = Int(-date.timeIntervalSinceNow / 60)
-        if mins < 1 { return L10n.t("just_now") }
-        if mins < 60 { return "\(mins)m" }
-        let hrs = mins / 60
-        if hrs < 24 { return "\(hrs)h" }
-        let days = hrs / 24
-        if days == 1 { return "yesterday" }
-        return "\(days)d"
-    }
 }
 
 // MARK: - Conversation view
@@ -1507,18 +1494,6 @@ struct ConversationView: View {
         .cornerRadius(16)
     }
 
-    // MARK: - Time ago
-
-    func timeAgo(_ date: Date) -> String {
-        let mins = Int(-date.timeIntervalSinceNow / 60)
-        if mins < 1 { return L10n.t("just_now") }
-        if mins < 60 { return "\(mins)m" }
-        let hrs = mins / 60
-        if hrs < 24 { return "\(hrs)h" }
-        let days = hrs / 24
-        if days == 1 { return "yesterday" }
-        return "\(days)d"
-    }
 }
 
 // MARK: - Messenger-style bubble shape

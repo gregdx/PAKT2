@@ -458,6 +458,8 @@ enum L10n {
 
         // Create group
         "start_now":                "Start now",
+        "start_time":               "START TIME",
+        "at_midnight":              "At 00:00",
 
         // Charts
         "details":                  "details",

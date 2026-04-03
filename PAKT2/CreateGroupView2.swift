@@ -289,7 +289,7 @@ struct CreateGroupView: View {
 
                 // Start time option
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("START TIME")
+                    Text(L10n.t("start_time"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(Theme.textFaint).tracking(1.6)
 
@@ -312,7 +312,7 @@ struct CreateGroupView: View {
                             HStack(spacing: 8) {
                                 Image(systemName: !startNow ? "checkmark.circle.fill" : "circle")
                                     .foregroundColor(!startNow ? Theme.text : Theme.textFaint)
-                                Text("At 00:00")
+                                Text(L10n.t("at_midnight"))
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundColor(!startNow ? Theme.text : Theme.textMuted)
                             }

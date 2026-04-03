@@ -402,7 +402,15 @@ func formatTime(_ minutes: Int) -> String {
     "\(minutes / 60)h\(String(format: "%02d", minutes % 60))"
 }
 
-
+func timeAgo(_ date: Date) -> String {
+    let s = Int(-date.timeIntervalSinceNow)
+    if s < 60    { return L10n.t("just_now") }
+    if s < 3600  { return "\(s / 60)m" }
+    if s < 86400 { return "\(s / 3600)h" }
+    let days = s / 86400
+    if days == 1 { return L10n.t("yesterday") }
+    return "\(days)d"
+}
 
 func generateGroupCode() -> String {
     let chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"

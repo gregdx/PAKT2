@@ -261,7 +261,7 @@ struct EditGroupView: View {
     private var membersSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("MEMBERS")
+                Text(L10n.t("members").uppercased())
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(Theme.textFaint).tracking(1.6)
                 Spacer()

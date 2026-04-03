@@ -269,11 +269,4 @@ struct NotificationsView: View {
         .padding(20).liquidGlass(cornerRadius: 18)
     }
 
-    func timeAgo(_ date: Date) -> String {
-        let s = Int(Date().timeIntervalSince(date))
-        if s < 60    { return L10n.t("just_now") }
-        if s < 3600  { return "\(s / 60)m ago" }
-        if s < 86400 { return "\(s / 3600)h ago" }
-        return "\(s / 86400)d ago"
-    }
 }

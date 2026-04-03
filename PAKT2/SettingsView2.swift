@@ -212,8 +212,6 @@ struct SettingsView: View {
 
     var socialGoalMinutes: Int { Int(socialGoalHours * 60) }
 
-    @State private var showStreakInfo = false
-
     var goalSection: some View {
         VStack(spacing: 20) {
             // Screen time goal

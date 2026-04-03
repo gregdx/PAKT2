@@ -454,7 +454,7 @@ struct GroupDetailView: View {
             // Best performer
             if let best = best {
                 VStack(spacing: 10) {
-                    Text("BEST")
+                    Text(L10n.t("best"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(Theme.textFaint)
                         .tracking(1.5)
@@ -477,7 +477,7 @@ struct GroupDetailView: View {
             // Under goal — avatars row
             if !underGoalMembers.isEmpty {
                 VStack(spacing: 10) {
-                    Text("UNDER GOAL")
+                    Text(L10n.t("under_goal_label"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(Theme.textFaint)
                         .tracking(1.5)
