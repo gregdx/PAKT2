@@ -1399,23 +1399,52 @@ struct ConversationView: View {
     private func activityProposalCard(_ msg: ChatMessage, isMine: Bool) -> some View {
         let emoji = msg.activityEmoji ?? "🎯"
         let title = msg.activityTitle ?? ""
+        let isVenue = emoji == "📍"
+        let venue = isVenue ? Venue.all.first(where: { $0.name == title }) : nil
 
         return VStack(spacing: 0) {
-            // Header — big emoji + activity name
-            VStack(spacing: 10) {
-                Text(emoji)
-                    .font(.system(size: 44))
+            // Venue photo if it's a spot
+            if let venue {
+                AsyncImage(url: URL(string: venue.photoURL)) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFill()
+                    default:
+                        LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+                            .overlay(Image(systemName: venue.icon).font(.system(size: 30)).foregroundColor(.white.opacity(0.2)))
+                    }
+                }
+                .frame(height: 120)
+                .clipped()
+            }
+
+            // Header — emoji + activity name
+            VStack(spacing: 8) {
+                if !isVenue {
+                    Text(emoji).font(.system(size: 40))
+                }
                 Text(title)
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundColor(Theme.text)
                     .multilineTextAlignment(.center)
+                if let venue {
+                    Text(venue.tagline)
+                        .font(.system(size: 13))
+                        .foregroundColor(Theme.textFaint)
+                    HStack(spacing: 4) {
+                        Image(systemName: "location.fill").font(.system(size: 10))
+                        Text(String(format: "%.1f km", venue.distance))
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundColor(Theme.textMuted)
+                }
                 Text(isMine ? L10n.t("proposal_mine_short") : L10n.t("proposal_theirs_short"))
-                    .font(.system(size: 14))
+                    .font(.system(size: 13))
                     .foregroundColor(Theme.textMuted)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
-            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .padding(.horizontal, 14)
 
             // Response badge (if already responded)
             if let resp = msg.proposalResponse {
@@ -1523,11 +1552,7 @@ struct ActivityPickerSheet: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject private var manager = ActivityManager.shared
     @Environment(\.dismiss) var dismiss
-    @State private var selectedCategory: ActCategory? = nil
-
-    private var categories: [ActCategory] {
-        [.outdoor, .sport, .food, .creative, .chill, .social]
-    }
+    @State private var pickerTab: DiscoverTab = .spots
 
     var body: some View {
         ZStack {
@@ -1542,59 +1567,124 @@ struct ActivityPickerSheet: View {
                     .tracking(1.2).textCase(.uppercase)
                     .padding(.bottom, 12)
 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        ForEach(categories, id: \.rawValue) { cat in
-                            let activities = Activity.suggestions.filter { $0.category == cat }
-
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    selectedCategory = selectedCategory == cat ? nil : cat
-                                }
-                            }) {
-                                HStack(spacing: 10) {
-                                    Image(systemName: cat.icon).font(.system(size: 13)).foregroundColor(cat.color)
-                                        .frame(width: 26, height: 26).background(cat.color.opacity(0.1)).cornerRadius(6)
-                                    Text(cat.label.capitalized).font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
-                                    Spacer()
-                                    Image(systemName: selectedCategory == cat ? "chevron.up" : "chevron.down")
-                                        .font(.system(size: 13, weight: .medium)).foregroundColor(Theme.textFaint)
-                                }
-                                .padding(.horizontal, 20).padding(.vertical, 12)
-                            }
-
-                            if selectedCategory == cat {
-                                VStack(spacing: 4) {
-                                    ForEach(activities) { activity in
-                                        Button(action: {
-                                            manager.sendActivity(activity, toFriendId: friendUid)
-                                            dismiss()
-                                        }) {
-                                            HStack(spacing: 10) {
-                                                Text(activity.emoji).font(.system(size: 18))
-                                                Text(activity.title).font(.system(size: 14, weight: .medium)).foregroundColor(Theme.text)
-                                                Spacer()
-                                                Text(activity.people).font(.system(size: 13)).foregroundColor(Theme.textFaint)
-                                            }
-                                            .padding(.horizontal, 20).padding(.vertical, 11)
-                                            .liquidGlass(cornerRadius: 10)
-                                        }
+                // Tabs
+                HStack(spacing: 8) {
+                    ForEach(DiscoverTab.allCases, id: \.self) { tab in
+                        Button(action: { withAnimation(.easeInOut(duration: 0.2)) { pickerTab = tab } }) {
+                            Text(tab.label)
+                                .font(.system(size: 14, weight: pickerTab == tab ? .semibold : .regular))
+                                .foregroundColor(pickerTab == tab ? Theme.bg : Theme.textMuted)
+                                .padding(.vertical, 7).padding(.horizontal, 16)
+                                .background {
+                                    if pickerTab == tab {
+                                        RoundedRectangle(cornerRadius: 18).fill(Theme.text)
+                                    } else {
+                                        RoundedRectangle(cornerRadius: 18).fill(.clear).liquidGlass(cornerRadius: 18)
                                     }
                                 }
-                                .padding(.horizontal, 16).padding(.bottom, 8)
-                                .transition(.opacity)
-                            }
-
-                            if cat != categories.last {
-                                Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.horizontal, 20)
-                            }
                         }
                     }
-                    .padding(.bottom, 40)
+                    Spacer()
+                }
+                .padding(.horizontal, 20).padding(.bottom, 14)
+
+                ScrollView(showsIndicators: false) {
+                    if pickerTab == .spots {
+                        spotsPickerList
+                    } else {
+                        freePickerList
+                    }
                 }
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    // MARK: - Spots picker
+
+    private var spotsPickerList: some View {
+        VStack(spacing: 10) {
+            ForEach(Venue.all) { venue in
+                Button(action: {
+                    let activity = Activity(
+                        emoji: "📍", titleEN: venue.name, titleFR: venue.name,
+                        subtitleEN: venue.address, subtitleFR: venue.address,
+                        category: .outdoor, people: "2"
+                    )
+                    manager.sendActivity(activity, toFriendId: friendUid)
+                    dismiss()
+                }) {
+                    HStack(spacing: 12) {
+                        // Mini photo
+                        AsyncImage(url: URL(string: venue.photoURL)) { phase in
+                            switch phase {
+                            case .success(let img):
+                                img.resizable().scaledToFill()
+                            default:
+                                LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+                                    .overlay(Image(systemName: venue.icon).font(.system(size: 14)).foregroundColor(.white.opacity(0.4)))
+                            }
+                        }
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(venue.name)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(Theme.text)
+                            Text(venue.tagline)
+                                .font(.system(size: 12))
+                                .foregroundColor(Theme.textMuted)
+                        }
+                        Spacer()
+                        Image(systemName: "paperplane")
+                            .font(.system(size: 13))
+                            .foregroundColor(Theme.textFaint)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .liquidGlass(cornerRadius: 14)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.horizontal, 16).padding(.bottom, 40)
+    }
+
+    // MARK: - Free activities picker
+
+    private var freePickerList: some View {
+        VStack(spacing: 8) {
+            ForEach(Activity.suggestions) { activity in
+                Button(action: {
+                    manager.sendActivity(activity, toFriendId: friendUid)
+                    dismiss()
+                }) {
+                    HStack(spacing: 12) {
+                        Text(activity.emoji).font(.system(size: 22))
+                            .frame(width: 44, height: 44)
+                            .background(activity.category.color.opacity(0.1))
+                            .cornerRadius(12)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(activity.title)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(Theme.text)
+                            Text(activity.subtitle)
+                                .font(.system(size: 12))
+                                .foregroundColor(Theme.textMuted)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: "paperplane")
+                            .font(.system(size: 13))
+                            .foregroundColor(Theme.textFaint)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .liquidGlass(cornerRadius: 14)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.horizontal, 16).padding(.bottom, 40)
     }
 }
 

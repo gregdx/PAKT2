@@ -46,8 +46,6 @@ struct TodayView: View {
         }
     }
 
-    @State private var selectedCategory: ActCategory? = nil
-
     var body: some View {
         GeometryReader { outerGeo in
         ZStack {
@@ -86,34 +84,6 @@ struct TodayView: View {
                         }
                     )
 
-                    // Section title
-                    SectionTitle(text: L10n.t("instead_of_scrolling"))
-                        .padding(.bottom, 8)
-
-                    // Category pills
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            categoryPill(nil, label: L10n.t("all"))
-                            ForEach(ActCategory.allCases, id: \.self) { cat in
-                                categoryPill(cat, label: cat.label)
-                            }
-                        }
-                        .padding(.horizontal, 24)
-                    }
-                    .padding(.bottom, 20)
-
-                    // Activity cards
-                    let filtered = selectedCategory == nil
-                        ? Activity.suggestions
-                        : Activity.suggestions.filter { $0.category == selectedCategory }
-
-                    LazyVStack(spacing: 14) {
-                        ForEach(filtered) { activity in
-                            activityCard(activity)
-                        }
-                    }
-                    .padding(.horizontal, 24)
-
                     Spacer().frame(height: 100)
                 }
             }
@@ -121,60 +91,6 @@ struct TodayView: View {
         } // GeometryReader
     }
 
-    // MARK: - Category pill
-
-    private func categoryPill(_ cat: ActCategory?, label: String) -> some View {
-        let isSelected = selectedCategory == cat
-        return Button(action: { withAnimation(.easeInOut(duration: 0.2)) { selectedCategory = cat } }) {
-            Text(label)
-                .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                .foregroundColor(isSelected ? Theme.bg : Theme.text)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 18)
-                .background {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 22).fill(Theme.text)
-                    } else {
-                        RoundedRectangle(cornerRadius: 22).fill(.clear).liquidGlass(cornerRadius: 22)
-                    }
-                }
-        }
-        .accessibilityLabel(label)
-    }
-
-    // MARK: - Activity card
-
-    private func activityCard(_ activity: Activity) -> some View {
-        HStack(spacing: 16) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(activity.category.color.opacity(0.1))
-                    .frame(width: 56, height: 56)
-                Text(activity.emoji)
-                    .font(.system(size: 26))
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(activity.title)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Theme.text)
-                Text(activity.subtitle)
-                    .font(.system(size: 14))
-                    .foregroundColor(Theme.textMuted)
-                    .lineLimit(2)
-            }
-
-            Spacer()
-
-            Text(activity.people)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(Theme.textFaint)
-        }
-        .padding(16)
-        .liquidGlass(cornerRadius: 16)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(activity.emoji) \(activity.title). \(activity.subtitle)")
-    }
 }
 
 // MARK: - Activity model

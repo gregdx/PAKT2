@@ -122,13 +122,26 @@ extension Venue {
     ]
 }
 
+enum DiscoverTab: CaseIterable {
+    case spots, free
+
+    var label: String {
+        switch self {
+        case .spots: return L10n.t("spots")
+        case .free:  return L10n.t("free_activities")
+        }
+    }
+}
+
 // MARK: - NearYouView
 
 struct NearYouView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject private var fm = FriendManager.shared
 
+    @State private var discoverTab: DiscoverTab = .spots
     @State private var selectedCategory: VenueCategory? = nil
+    @State private var selectedFreeCategory: ActCategory? = nil
     @State private var radiusKm: Double = 5.0
     @State private var showRadiusPicker = false
     @State private var inviteFriend: Venue? = nil
@@ -148,9 +161,17 @@ struct NearYouView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     header
-                    radiusSelector
-                    categoryPills
-                    venuesList
+                    discoverTabs
+
+                    if discoverTab == .spots {
+                        radiusSelector
+                        categoryPills
+                        venuesList
+                    } else {
+                        freeCategoryPills
+                        freeActivitiesList
+                    }
+
                     Spacer().frame(height: 100)
                 }
                 .opacity(appeared ? 1 : 0)
@@ -259,6 +280,89 @@ struct NearYouView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Discover tabs (Spots / Free)
+
+    private var discoverTabs: some View {
+        HStack(spacing: 8) {
+            ForEach(DiscoverTab.allCases, id: \.self) { tab in
+                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { discoverTab = tab } }) {
+                    Text(tab.label)
+                        .font(.system(size: 15, weight: discoverTab == tab ? .semibold : .regular))
+                        .foregroundColor(discoverTab == tab ? Theme.bg : Theme.textMuted)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 20)
+                        .background {
+                            if discoverTab == tab {
+                                RoundedRectangle(cornerRadius: 20).fill(Theme.text)
+                            } else {
+                                RoundedRectangle(cornerRadius: 20).fill(.clear).liquidGlass(cornerRadius: 20)
+                            }
+                        }
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 16)
+    }
+
+    // MARK: - Free activities
+
+    private var freeCategoryPills: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                pill(label: L10n.t("all"), icon: nil, isSelected: selectedFreeCategory == nil) {
+                    selectedFreeCategory = nil
+                }
+                ForEach(ActCategory.allCases, id: \.self) { cat in
+                    pill(label: cat.label, icon: nil, isSelected: selectedFreeCategory == cat) {
+                        selectedFreeCategory = cat
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+        .padding(.bottom, 20)
+    }
+
+    private var freeActivitiesList: some View {
+        let filtered = selectedFreeCategory == nil
+            ? Activity.suggestions
+            : Activity.suggestions.filter { $0.category == selectedFreeCategory }
+
+        return VStack(spacing: 12) {
+            ForEach(filtered) { activity in
+                freeActivityCard(activity)
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private func freeActivityCard(_ activity: Activity) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(activity.category.color.opacity(0.1))
+                    .frame(width: 52, height: 52)
+                Text(activity.emoji)
+                    .font(.system(size: 24))
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(activity.title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.text)
+                Text(activity.subtitle)
+                    .font(.system(size: 13))
+                    .foregroundColor(Theme.textMuted)
+                    .lineLimit(2)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .liquidGlass(cornerRadius: 16)
     }
 
     // MARK: - Venues list

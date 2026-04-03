@@ -206,6 +206,8 @@ enum L10n {
         "near_you_title":       "Discover",
         "near_you_coming":      "Coming soon",
         "near_you_desc":        "Activities from local spots\nnear you — cafés, gyms, parks...",
+        "spots":                "Spots",
+        "free_activities":      "Free",
         "visit_website":        "Website",
         "go_with_friend":       "Go with a friend",
         "no_venues_radius":     "No spots in this radius",
