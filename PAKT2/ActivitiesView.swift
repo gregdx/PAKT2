@@ -994,18 +994,19 @@ struct ActivitiesView: View {
                 HStack {
                     Button(action: { showNewConversation = false }) {
                         Image(systemName: "xmark").font(.system(size: 16)).foregroundColor(Theme.textMuted)
+                            .frame(width: 36, height: 36).liquidGlass(cornerRadius: 10)
                     }
                     Spacer()
                     Text(L10n.t("start_conversation"))
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Theme.textMuted)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Theme.text)
                     Spacer()
-                    Image(systemName: "xmark").opacity(0).font(.system(size: 16))
+                    Color.clear.frame(width: 36, height: 36)
                 }
                 .padding(.horizontal, 24).padding(.top, 52).padding(.bottom, 20)
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 0) {
+                    VStack(spacing: 10) {
                         ForEach(fm.friends) { friend in
                             Button(action: {
                                 showNewConversation = false
@@ -1014,18 +1015,24 @@ struct ActivitiesView: View {
                                 }
                             }) {
                                 HStack(spacing: 14) {
-                                    AvatarView(name: friend.firstName, size: 40, color: Theme.textMuted,
+                                    AvatarView(name: friend.firstName, size: 44, color: Theme.textMuted,
                                                uid: friend.id, isMe: false).environmentObject(appState)
                                     Text(friend.firstName)
-                                        .font(.system(size: 15, weight: .medium))
+                                        .font(.system(size: 16, weight: .medium))
                                         .foregroundColor(Theme.text)
                                     Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(Theme.textFaint)
                                 }
-                                .padding(.horizontal, 24).padding(.vertical, 12)
+                                .padding(.horizontal, 18).padding(.vertical, 14)
+                                .liquidGlass(cornerRadius: 16)
                             }
-                            Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.leading, 78)
+                            .buttonStyle(PlainButtonStyle())
                         }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
                 }
             }
         }
