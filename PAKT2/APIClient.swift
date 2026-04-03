@@ -194,6 +194,8 @@ class APIClient {
                 }
                 return try decoder.decode(T.self, from: retryData)
             } else {
+                // Refresh failed — force re-login
+                await MainActor.run { AppState.shared.signOut() }
                 throw APIError(message: "Session expired", statusCode: 401)
             }
         }
