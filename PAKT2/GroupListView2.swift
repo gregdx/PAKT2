@@ -92,19 +92,6 @@ struct GroupsListView: View {
                     }
                 }
                 .accessibilityLabel("Notifications")
-                Button(action: { withAnimation { selectedTab = 3 } }) {
-                    ZStack {
-                        if let uiImage = appState.profileUIImage {
-                            Image(uiImage: uiImage).resizable().scaledToFill()
-                                .frame(width: 40, height: 40).clipShape(Circle())
-                        } else {
-                            Circle().fill(Theme.bgWarm).frame(width: 40, height: 40)
-                            Text(String(appState.userName.prefix(1)).uppercased())
-                                .font(.system(size: 15, weight: .bold)).foregroundColor(Theme.textMuted)
-                        }
-                    }
-                }
-                .accessibilityLabel("Profile")
             }
         }
         .padding(.horizontal, 24).padding(.top, 64).padding(.bottom, 28)
