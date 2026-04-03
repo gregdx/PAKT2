@@ -1056,6 +1056,7 @@ struct ConversationView: View {
     @ObservedObject private var manager = ActivityManager.shared
     @State private var showActivityPicker = false
     @State private var showFriendProfile = false
+    @State private var tappedVenue: Venue? = nil
     @State private var textInput = ""
     @FocusState private var isTextFocused: Bool
 
@@ -1156,6 +1157,9 @@ struct ConversationView: View {
         .background(Theme.bg)
         .sheet(isPresented: $showActivityPicker) {
             ActivityPickerSheet(friendUid: friendUid).environmentObject(appState)
+        }
+        .sheet(item: $tappedVenue) { venue in
+            VenueDetailSheet(venue: venue, onInvite: {})
         }
         .sheet(isPresented: $showFriendProfile) {
             NavigationView {
@@ -1357,6 +1361,11 @@ struct ConversationView: View {
             VStack(alignment: isMine ? .trailing : .leading, spacing: 0) {
                 if msg.isActivity {
                     activityProposalCard(msg, isMine: isMine)
+                        .onTapGesture {
+                            if let venue = Venue.all.first(where: { $0.name == msg.activityTitle }) {
+                                tappedVenue = venue
+                            }
+                        }
                         .contextMenu { messageContextMenu(msg) }
                 } else {
                     // Text bubble
