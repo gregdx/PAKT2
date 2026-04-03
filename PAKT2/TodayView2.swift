@@ -86,6 +86,10 @@ struct TodayView: View {
                         }
                     )
 
+                    // Section title
+                    SectionTitle(text: L10n.t("instead_of_scrolling"))
+                        .padding(.bottom, 8)
+
                     // Category pills
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
