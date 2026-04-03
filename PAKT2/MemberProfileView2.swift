@@ -12,6 +12,13 @@ struct MemberProfileView: View {
     @State private var weekHistory: [DataPoint] = []
     @State private var memberAchievements: Set<String> = []
 
+    private static let dateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+    private static let shortDateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "d/M"; f.locale = Locale(identifier: "en_US"); return f
+    }()
+
     var color: Color { memberColor(rank: rank, total: total, mode: group.mode) }
     var isSocial: Bool { group.scope == .social }
 
@@ -75,6 +82,7 @@ struct MemberProfileView: View {
                         .font(.system(size: 18, weight: .medium))
                         .foregroundColor(Theme.textMuted)
                 }
+                .accessibilityLabel(L10n.t("done"))
                 Spacer()
             }
             .padding(.horizontal, 24).padding(.top, 60)
@@ -201,12 +209,8 @@ struct MemberProfileView: View {
     }
 
     private func loadWeekHistory() async {
-        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
-        let dayFmt = DateFormatter(); dayFmt.dateFormat = "d/M"
-        dayFmt.locale = Locale(identifier: "en_US")
         let cal = Calendar.current
-
-        let startStr = df.string(from: cal.startOfDay(for: group.startDate))
+        let startStr = Self.dateFmt.string(from: cal.startOfDay(for: group.startDate))
 
         var scoresByDate: [String: Int] = [:]
         do {
@@ -226,8 +230,8 @@ struct MemberProfileView: View {
         var result: [DataPoint] = []
         for i in 0..<totalDays {
             let date = cal.date(byAdding: .day, value: i, to: startDate) ?? startDate
-            let dateKey = df.string(from: date)
-            let label = dayFmt.string(from: date)
+            let dateKey = Self.dateFmt.string(from: date)
+            let label = Self.shortDateFmt.string(from: date)
             let minutes = scoresByDate[dateKey] ?? 0
             result.append(DataPoint(day: label, minutes: minutes))
         }

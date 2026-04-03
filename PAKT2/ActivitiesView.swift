@@ -1100,6 +1100,13 @@ struct ConversationView: View {
     @State private var showFriendProfile = false
     @State private var textInput = ""
     @FocusState private var isTextFocused: Bool
+
+    private static let timeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+    private static let dateTimeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMM d, HH:mm"; return f
+    }()
     @State private var messageToDelete: ChatMessage? = nil
     @State private var localMessages: [ChatMessage] = []
     @State private var pollTimer: Timer? = nil
@@ -1344,17 +1351,11 @@ struct ConversationView: View {
     private func groupTimestamp(_ date: Date) -> String {
         let calendar = Calendar.current
         if calendar.isDateInToday(date) {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            return formatter.string(from: date)
+            return Self.timeFmt.string(from: date)
         } else if calendar.isDateInYesterday(date) {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            return "Yesterday \(formatter.string(from: date))"
+            return "\(L10n.t("yesterday")) \(Self.timeFmt.string(from: date))"
         } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "MMM d, HH:mm"
-            return formatter.string(from: date)
+            return Self.dateTimeFmt.string(from: date)
         }
     }
 

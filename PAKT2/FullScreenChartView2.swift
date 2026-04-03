@@ -84,6 +84,7 @@ struct FullScreenChartView: View {
                     .frame(width: 36, height: 36)
                     .liquidGlass(cornerRadius: 10)
             }
+            .accessibilityLabel(L10n.t("done"))
         }
         .padding(.horizontal, 24)
         .padding(.top, 60)

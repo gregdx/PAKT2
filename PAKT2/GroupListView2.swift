@@ -11,8 +11,7 @@ struct GroupsListView: View {
     @State private var isRefreshing = false
 
     private var todayKey: String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: Date())
+        ScreenTimeManager.dateFormatter.string(from: Date())
     }
 
     var body: some View {

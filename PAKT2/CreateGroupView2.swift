@@ -256,6 +256,7 @@ struct CreateGroupView: View {
                             .liquidGlass(cornerRadius: 12)
                     }
                     .disabled(requiredPlayers <= 2)
+                    .accessibilityLabel("Fewer players")
 
                     Button(action: { if requiredPlayers < 20 { requiredPlayers += 1 } }) {
                         Image(systemName: "plus")
@@ -264,6 +265,7 @@ struct CreateGroupView: View {
                             .frame(width: 48, height: 48)
                             .liquidGlass(cornerRadius: 12)
                     }
+                    .accessibilityLabel("More players")
                 }
             }
             Spacer()
@@ -453,6 +455,7 @@ struct CreateGroupView: View {
                 Image(systemName: step == 0 ? "xmark" : "chevron.left")
                     .font(.system(size: 18)).foregroundColor(Theme.textMuted)
             }
+            .accessibilityLabel(step == 0 ? L10n.t("cancel") : L10n.t("done"))
             Spacer()
             Text(title).font(.system(size: 17, weight: .semibold)).foregroundColor(Theme.textMuted)
             Spacer()

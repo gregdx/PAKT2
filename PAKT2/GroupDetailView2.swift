@@ -328,11 +328,10 @@ struct GroupDetailView: View {
         let allDates: [String] = (0..<totalDays).map { i in
             df.string(from: cal.date(byAdding: .day, value: i, to: startDay) ?? Date())
         }
+        let shortFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "dd/MM"; f.locale = Locale(identifier: "en_US"); return f }()
         let dayLabels: [String] = allDates.map { dateStr in
-            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-            let d = f.date(from: dateStr) ?? Date()
-            let lf = DateFormatter(); lf.dateFormat = "dd/MM"; lf.locale = Locale(identifier: "en_US")
-            return lf.string(from: d)
+            let d = df.date(from: dateStr) ?? Date()
+            return shortFmt.string(from: d)
         }
         let members = group.members
 
