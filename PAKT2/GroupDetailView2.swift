@@ -50,7 +50,6 @@ struct GroupDetailView: View {
                 VStack(spacing: 0) {
                     detailHeader
 
-                    let _ = Log.d("[GROUP DETAIL] status=\(group.status) isPending=\(group.isPending) hasStarted=\(group.hasStarted) startDate=\(group.startDate) now=\(Date())")
                     if group.isPending {
                         pendingPaktView
                     } else if !group.hasStarted {

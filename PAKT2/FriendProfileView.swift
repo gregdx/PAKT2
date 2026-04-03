@@ -20,6 +20,7 @@ struct FriendProfileView: View {
                                 .font(.system(size: 18, weight: .medium))
                                 .foregroundColor(Theme.textMuted)
                         }
+                        .accessibilityLabel(L10n.t("done"))
                         Spacer()
                     }
                     .padding(.horizontal, 24)

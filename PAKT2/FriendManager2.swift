@@ -121,7 +121,10 @@ final class FriendManager: ObservableObject {
                 // Reload friends list
                 if let friends = try? await APIClient.shared.listFriends() {
                     await MainActor.run {
-                        self.friends = friends.map { AppUser(id: $0.userId, firstName: $0.username, email: "") }
+                        self.friends = friends.map {
+                            UsernameCache.store(uid: $0.userId, name: $0.username)
+                            return AppUser(id: $0.userId, firstName: UsernameCache.resolve(uid: $0.userId, name: $0.username), email: "")
+                        }
                     }
                 }
             } catch {

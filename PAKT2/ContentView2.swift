@@ -26,10 +26,8 @@ struct ContentView: View {
         .id("\(isDarkMode)_\(appLanguage)")
         .onReceive(AuthManager.shared.$currentUser) { user in
             guard let user, appState.isOnboarded else { return }
-            Log.d("[PAKT] currentUser loaded: \(user.id) — triggering sync")
             Task {
                 await appState.syncFromBackend()
-                Log.d("[PAKT] Auth-triggered sync done. Groups: \(appState.groups.count)")
                 InvitationManager.shared.startListening()
                 FriendManager.shared.startListening()
                 WebSocketManager.shared.connect()
@@ -177,28 +175,15 @@ struct ContentView: View {
 
             // Refresh token THEN start everything
             Task {
-                let hasToken = AuthManager.shared.accessToken != nil
-                Log.d("[PAKT] Has token before refresh: \(hasToken)")
-
-                if hasToken {
-                    let refreshed = await AuthManager.shared.refreshTokens()
-                    Log.d("[PAKT] Token refresh: \(refreshed)")
-                } else {
-                    Log.d("[PAKT] No token yet — skipping refresh (fresh sign in?)")
+                if AuthManager.shared.accessToken != nil {
+                    _ = await AuthManager.shared.refreshTokens()
                 }
 
-                guard AuthManager.shared.accessToken != nil else {
-                    Log.d("[PAKT] No valid token — skipping network init")
-                    return
-                }
+                guard AuthManager.shared.accessToken != nil else { return }
 
-                Log.d("[PAKT] Starting network init...")
                 InvitationManager.shared.startListening()
                 FriendManager.shared.startListening()
-
-                Log.d("[PAKT] Syncing from backend...")
                 await appState.syncFromBackend()
-                Log.d("[PAKT] Sync done. Groups: \(appState.groups.count)")
 
                 WebSocketManager.shared.connect()
                 WebSocketManager.shared.subscribe("scores")

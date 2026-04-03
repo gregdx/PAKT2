@@ -215,8 +215,6 @@ struct SettingsView: View {
 
     // MARK: - Goal section
 
-    var socialGoalMinutes: Int { Int(socialGoalHours * 60) }
-
     var goalSection: some View {
         VStack(spacing: 20) {
             // Screen time goal
