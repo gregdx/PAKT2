@@ -11,7 +11,9 @@ struct Venue: Identifiable {
     let rating: Double
     let reviewCount: Int
     let websiteURL: String
-    let gradient: [Color] // placeholder for photo
+    let instagramHandle: String
+    let photoURL: String // remote image
+    let gradient: [Color] // fallback gradient
     let icon: String
     let tagline: String
 }
@@ -45,6 +47,8 @@ extension Venue {
               rating: 4.3,
               reviewCount: 1240,
               websiteURL: "https://leflore.brussels",
+              instagramHandle: "leflore.brussels",
+              photoURL: "https://leflore.brussels/wp-content/uploads/2023/06/le-flore-brussels-terrasse.jpg",
               gradient: [Color(red: 0.85, green: 0.65, blue: 0.45), Color(red: 0.65, green: 0.40, blue: 0.25)],
               icon: "cup.and.saucer.fill",
               tagline: "Bar · Brunch · Bois de la Cambre"),
@@ -55,6 +59,8 @@ extension Venue {
               rating: 4.8,
               reviewCount: 187,
               websiteURL: "https://www.syncycle.be",
+              instagramHandle: "syncycle",
+              photoURL: "https://www.syncycle.be/wp-content/uploads/2023/01/syncycle-studio.jpg",
               gradient: [Color(red: 0.20, green: 0.20, blue: 0.35), Color(red: 0.35, green: 0.25, blue: 0.55)],
               icon: "figure.indoor.cycle",
               tagline: "Indoor cycling studio"),
@@ -65,36 +71,44 @@ extension Venue {
               rating: 4.7,
               reviewCount: 3420,
               websiteURL: "https://www.visit.brussels/fr/visitors/venue-details.Bois-de-la-Cambre.17411",
+              instagramHandle: "visit.brussels",
+              photoURL: "https://www.visit.brussels/content/dam/visitbrussels/images/bois-de-la-cambre-lac.jpg",
               gradient: [Color(red: 0.15, green: 0.45, blue: 0.25), Color(red: 0.08, green: 0.30, blue: 0.18)],
               icon: "leaf.fill",
               tagline: "Park · Run · Walk · Lake"),
         Venue(name: "Basic-Fit Ixelles",
               category: .fitness,
-              address: "Chaussée d'Ixelles 227, 1050 Ixelles",
+              address: "Chaussée d'Ixelles 29, 1050 Ixelles",
               distance: 0.8,
               rating: 4.0,
               reviewCount: 312,
-              websiteURL: "https://www.basic-fit.com",
+              websiteURL: "https://www.basic-fit.com/fr-be/clubs/basic-fit-ixelles-chaussee-d%E2%80%99ixelles-24-7-b9b62984685e4e0abfef339ef63360ff.html",
+              instagramHandle: "basicfit",
+              photoURL: "https://edge.sitecorecloud.io/basicfit-e255e1c5/media/Project/BasicFit/basicfit-com/club-images/BF-club-interior.jpg",
               gradient: [Color(red: 0.90, green: 0.50, blue: 0.15), Color(red: 0.75, green: 0.30, blue: 0.10)],
               icon: "dumbbell.fill",
               tagline: "Gym · 24/7"),
-        Venue(name: "Padel Brussels",
+        Venue(name: "Tour & Taxis Padel Club",
               category: .sport,
-              address: "Av. du Racing 1, 1050 Ixelles",
-              distance: 1.8,
+              address: "Av. du Port 86, 1000 Bruxelles",
+              distance: 4.8,
               rating: 4.5,
               reviewCount: 245,
-              websiteURL: "https://www.padelbrussels.be",
+              websiteURL: "https://playtomic.com/clubs/tour-taxis-padel-club",
+              instagramHandle: "tourtaxispadelclub",
+              photoURL: "https://images.playtomic.io/clubs/tour-taxis-padel.jpg",
               gradient: [Color(red: 0.25, green: 0.35, blue: 0.55), Color(red: 0.15, green: 0.20, blue: 0.40)],
               icon: "sportscourt.fill",
-              tagline: "Padel · Tennis · Squash"),
+              tagline: "Padel · 8 courts · Bar"),
         Venue(name: "Aspria Royal La Rasante",
               category: .wellness,
               address: "Rue Sombre 56, 1200 Woluwe-Saint-Lambert",
               distance: 4.5,
               rating: 4.6,
               reviewCount: 890,
-              websiteURL: "https://www.aspria.com/en/clubs/aspria-royal-la-rasante",
+              websiteURL: "https://www.aspria.com/en/brussels-royal-la-rasante",
+              instagramHandle: "aspria_belgium",
+              photoURL: "https://www.aspria.com/media/images/clubs/rasante-pool-exterior.jpg",
               gradient: [Color(red: 0.55, green: 0.40, blue: 0.60), Color(red: 0.35, green: 0.22, blue: 0.45)],
               icon: "sparkles",
               tagline: "Spa · Pool · Gym · Wellness"),
@@ -226,9 +240,13 @@ struct NearYouView: View {
             .foregroundColor(isSelected ? Theme.bg : Theme.textMuted)
             .padding(.vertical, 8)
             .padding(.horizontal, 14)
-            .background(isSelected ? Theme.text : Color.clear)
-            .cornerRadius(20)
-            .liquidGlass(cornerRadius: isSelected ? 0 : 20)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 20).fill(Theme.text)
+                } else {
+                    RoundedRectangle(cornerRadius: 20).fill(.clear).liquidGlass(cornerRadius: 20)
+                }
+            }
         }
     }
 
@@ -259,15 +277,23 @@ struct NearYouView: View {
 
     private func venueCard(_ venue: Venue) -> some View {
         VStack(spacing: 0) {
-            // Photo placeholder with gradient
+            // Photo
             ZStack(alignment: .bottomLeading) {
-                LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
-                    .frame(height: 140)
-                    .overlay(
-                        Image(systemName: venue.icon)
-                            .font(.system(size: 40, weight: .light))
-                            .foregroundColor(.white.opacity(0.2))
-                    )
+                AsyncImage(url: URL(string: venue.photoURL)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        LinearGradient(colors: venue.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+                            .overlay(
+                                Image(systemName: venue.icon)
+                                    .font(.system(size: 40, weight: .light))
+                                    .foregroundColor(.white.opacity(0.25))
+                            )
+                    }
+                }
+                .frame(height: 160)
+                .clipped()
 
                 // Distance badge
                 HStack(spacing: 4) {
@@ -323,23 +349,31 @@ struct NearYouView: View {
                 }
 
                 // Action buttons
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     // Website
                     Button(action: {
                         if let url = URL(string: venue.websiteURL) {
                             UIApplication.shared.open(url)
                         }
                     }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "safari")
-                                .font(.system(size: 13))
-                            Text(L10n.t("visit_website"))
-                                .font(.system(size: 13, weight: .medium))
+                        Image(systemName: "safari")
+                            .font(.system(size: 15))
+                            .foregroundColor(Theme.text)
+                            .frame(width: 38, height: 38)
+                            .liquidGlass(cornerRadius: 10)
+                    }
+
+                    // Instagram
+                    Button(action: {
+                        if let url = URL(string: "https://instagram.com/\(venue.instagramHandle)") {
+                            UIApplication.shared.open(url)
                         }
-                        .foregroundColor(Theme.text)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .liquidGlass(cornerRadius: 10)
+                    }) {
+                        Image(systemName: "camera")
+                            .font(.system(size: 15))
+                            .foregroundColor(Theme.text)
+                            .frame(width: 38, height: 38)
+                            .liquidGlass(cornerRadius: 10)
                     }
 
                     // Invite a friend

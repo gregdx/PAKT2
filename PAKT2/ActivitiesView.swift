@@ -716,9 +716,13 @@ struct ActivitiesView: View {
                         .foregroundColor(selectedTab == tab ? Theme.bg : Theme.textMuted)
                         .padding(.vertical, 8)
                         .padding(.horizontal, 20)
-                        .background(selectedTab == tab ? Theme.text : Color.clear)
-                        .cornerRadius(20)
-                        .liquidGlass(cornerRadius: selectedTab == tab ? 0 : 20)
+                        .background {
+                            if selectedTab == tab {
+                                RoundedRectangle(cornerRadius: 20).fill(Theme.text)
+                            } else {
+                                RoundedRectangle(cornerRadius: 20).fill(.clear).liquidGlass(cornerRadius: 20)
+                            }
+                        }
                 }
             }
             Spacer()
