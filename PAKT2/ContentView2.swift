@@ -187,6 +187,7 @@ struct ContentView: View {
 
                 InvitationManager.shared.startListening()
                 FriendManager.shared.startListening()
+                NotificationService.shared.startListening()
                 await appState.syncFromBackend()
 
                 WebSocketManager.shared.connect()
