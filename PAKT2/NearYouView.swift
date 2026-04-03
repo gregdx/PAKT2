@@ -159,37 +159,39 @@ struct NearYouView: View {
     // MARK: - Radius selector
 
     private var radiusSelector: some View {
-        Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showRadiusPicker.toggle() } }) {
-            HStack(spacing: 8) {
-                Image(systemName: "location.circle")
-                    .font(.system(size: 14))
-                Text("\(Int(radiusKm)) km")
-                    .font(.system(size: 14, weight: .semibold))
-                Image(systemName: showRadiusPicker ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .foregroundColor(Theme.text)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 14)
-            .liquidGlass(cornerRadius: 20)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 24)
-        .padding(.bottom, showRadiusPicker ? 0 : 16)
-
-        if showRadiusPicker {
-            VStack(spacing: 4) {
-                Slider(value: $radiusKm, in: 1...20, step: 1)
-                    .tint(Theme.text)
-                HStack {
-                    Text("1 km").font(.system(size: 12)).foregroundColor(Theme.textFaint)
-                    Spacer()
-                    Text("20 km").font(.system(size: 12)).foregroundColor(Theme.textFaint)
+        VStack(spacing: 0) {
+            Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showRadiusPicker.toggle() } }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "location.circle")
+                        .font(.system(size: 14))
+                    Text("\(Int(radiusKm)) km")
+                        .font(.system(size: 14, weight: .semibold))
+                    Image(systemName: showRadiusPicker ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11, weight: .medium))
                 }
+                .foregroundColor(Theme.text)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 14)
+                .liquidGlass(cornerRadius: 20)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 24)
-            .padding(.bottom, 16)
-            .transition(.opacity.combined(with: .move(edge: .top)))
+            .padding(.bottom, showRadiusPicker ? 12 : 16)
+
+            if showRadiusPicker {
+                VStack(spacing: 4) {
+                    Slider(value: $radiusKm, in: 1...20, step: 1)
+                        .tint(Theme.text)
+                    HStack {
+                        Text("1 km").font(.system(size: 12)).foregroundColor(Theme.textFaint)
+                        Spacer()
+                        Text("20 km").font(.system(size: 12)).foregroundColor(Theme.textFaint)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 16)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
     }
 
