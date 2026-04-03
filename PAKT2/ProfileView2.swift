@@ -18,6 +18,7 @@ struct ProfileView: View {
     @State private var isTimerRunning = false
     @State private var tappedDay: String? = nil
     @State private var myAchievements: Set<String> = []
+    @State private var showAllMedals = false
     @State private var showGroupDetail = false
     @State private var selectedGroupId: UUID? = nil
     var goalMinutes: Int { Int(appState.goalHours * 60) }
@@ -96,44 +97,9 @@ struct ProfileView: View {
                     }
 
                     // Achievements
-                    Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.horizontal, 24).padding(.vertical, 24)
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            SectionTitle(text: L10n.t("medals"))
-                            Spacer()
-                            let count = myAchievements.count
-                            let total = AchievementDef.all.count
-                            Text("\(count)/\(total)")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(Theme.textFaint)
-                                .padding(.trailing, 24)
-                        }
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 14) {
-                            ForEach(AchievementDef.all) { achievement in
-                                let unlocked = myAchievements.contains(achievement.id)
-                                VStack(spacing: 8) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(unlocked ? achievement.color.opacity(0.15) : Theme.bgWarm)
-                                            .frame(width: 44, height: 44)
-                                        Image(systemName: achievement.icon)
-                                            .font(.system(size: 18, weight: .medium))
-                                            .foregroundColor(unlocked ? achievement.color : Theme.textFaint)
-                                    }
-                                    Text(achievement.name)
-                                        .font(.system(size: 12, weight: unlocked ? .semibold : .regular))
-                                        .foregroundColor(unlocked ? Theme.text : Theme.textFaint)
-                                        .multilineTextAlignment(.center)
-                                        .lineLimit(2)
-                                        .frame(height: 30)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .opacity(unlocked ? 1.0 : 0.4)
-                            }
-                        }
+                    medalsCard
                         .padding(.horizontal, 24)
-                    }
+                        .padding(.top, 24)
 
                     Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.horizontal, 24).padding(.vertical, 24)
                     groupsSummary.padding(.horizontal, 24)
@@ -435,6 +401,70 @@ struct ProfileView: View {
             return ("✅", "\(L10n.t("today")): \(formatTime(today)) — \(L10n.t("under_goal_keep"))")
         }
         return ("", "")
+    }
+
+    // MARK: - Medals card
+
+    private var medalsCard: some View {
+        let count = myAchievements.count
+        let total = AchievementDef.all.count
+        let previewCount = 6
+        let items = showAllMedals ? AchievementDef.all : Array(AchievementDef.all.prefix(previewCount))
+
+        return VStack(spacing: 14) {
+            // Header
+            HStack {
+                Text(L10n.t("medals"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Theme.textFaint)
+                    .tracking(1.6)
+                Spacer()
+                Text("\(count)/\(total)")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Theme.textFaint)
+            }
+
+            // Grid
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 14) {
+                ForEach(items) { achievement in
+                    let unlocked = myAchievements.contains(achievement.id)
+                    VStack(spacing: 6) {
+                        ZStack {
+                            Circle()
+                                .fill(unlocked ? achievement.color.opacity(0.15) : Theme.bgWarm)
+                                .frame(width: 40, height: 40)
+                            Image(systemName: achievement.icon)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(unlocked ? achievement.color : Theme.textFaint)
+                        }
+                        Text(achievement.name)
+                            .font(.system(size: 11, weight: unlocked ? .semibold : .regular))
+                            .foregroundColor(unlocked ? Theme.text : Theme.textFaint)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .frame(height: 28)
+                    }
+                    .opacity(unlocked ? 1.0 : 0.4)
+                }
+            }
+
+            // Show more / less
+            if AchievementDef.all.count > previewCount {
+                Button(action: { withAnimation(.easeInOut(duration: 0.25)) { showAllMedals.toggle() } }) {
+                    HStack(spacing: 6) {
+                        Text(showAllMedals ? L10n.t("done") : L10n.t("see_all"))
+                            .font(.system(size: 14, weight: .medium))
+                        Image(systemName: showAllMedals ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(Theme.textMuted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
+                }
+            }
+        }
+        .padding(18)
+        .liquidGlass(cornerRadius: 16)
     }
 
     // MARK: - Header

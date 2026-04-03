@@ -454,6 +454,7 @@ enum L10n {
         "no_archived_conversations": "No archived conversations",
 
         // Members
+        "see_all":                  "See all",
         "admin":                    "Admin",
 
         // Create group
