@@ -143,7 +143,7 @@ enum L10n {
         "checking":             "checking...",
 
         // Settings (extended)
-        "profile":              "PROFILE",
+        "profile":              "Profile",
         "preferences":          "PREFERENCES",
         "support":              "SUPPORT",
         "edit_photo":           "edit photo",
