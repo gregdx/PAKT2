@@ -603,6 +603,7 @@ struct ActivitiesView: View {
     @State private var showNewConversation = false
     @State private var selectedTab: MessageTab = .friends
     @State private var showArchived = false
+    @State private var searchText = ""
 
     var body: some View {
         ZStack {
@@ -616,6 +617,7 @@ struct ActivitiesView: View {
                         archivedSection
                     } else {
                         tabSelector
+                        searchBar
 
                         switch selectedTab {
                         case .friends:
@@ -725,13 +727,42 @@ struct ActivitiesView: View {
         .padding(.bottom, 20)
     }
 
+    // MARK: - Search bar
+
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15))
+                .foregroundColor(Theme.textFaint)
+            TextField(L10n.t("search_friends"), text: $searchText)
+                .font(.system(size: 16))
+                .foregroundColor(Theme.text)
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+            if !searchText.isEmpty {
+                Button(action: { searchText = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundColor(Theme.textFaint)
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .liquidGlass(cornerRadius: 12)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
+    }
+
     // MARK: - Friends tab
 
     private var friendsList: some View {
-        let convUids = manager.activeConversationUids()
-        let otherFriends = fm.friends.filter { f in
-            !manager.conversationUids().contains(f.id)
-        }
+        let convUids = searchText.isEmpty
+            ? manager.activeConversationUids()
+            : manager.activeConversationUids().filter { uid in
+                let name = fm.friends.first { $0.id == uid }?.firstName ?? ""
+                return name.lowercased().contains(searchText.lowercased())
+            }
 
         return VStack(spacing: 0) {
             if fm.friends.isEmpty && convUids.isEmpty {
@@ -752,37 +783,6 @@ struct ActivitiesView: View {
                     }
                 }
                 .padding(.horizontal, 20)
-
-                // Friends with no conversation yet
-                if !otherFriends.isEmpty {
-                    VStack(alignment: .leading, spacing: 0) {
-                        SectionTitle(text: L10n.t("start_conversation"))
-                            .padding(.top, 28)
-                            .padding(.bottom, 12)
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
-                                ForEach(otherFriends) { friend in
-                                    Button(action: {
-                                        activeChat = .friend(uid: friend.id, name: friend.firstName)
-                                    }) {
-                                        VStack(spacing: 8) {
-                                            AvatarView(name: friend.firstName, size: 52, color: Theme.textMuted,
-                                                       uid: friend.id, isMe: false)
-                                                .environmentObject(appState)
-                                            Text(friend.firstName)
-                                                .font(.system(size: 13, weight: .medium))
-                                                .foregroundColor(Theme.text)
-                                                .lineLimit(1)
-                                        }
-                                        .frame(width: 68)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                        }
-                    }
-                }
             }
         }
     }
@@ -817,7 +817,7 @@ struct ActivitiesView: View {
             let last1 = manager.messagesForGroup(g1.id.uuidString).last?.createdAt ?? .distantPast
             let last2 = manager.messagesForGroup(g2.id.uuidString).last?.createdAt ?? .distantPast
             return last1 > last2
-        }
+        }.filter { searchText.isEmpty || $0.name.lowercased().contains(searchText.lowercased()) }
 
         return VStack(spacing: 0) {
             if sortedGroups.isEmpty {
