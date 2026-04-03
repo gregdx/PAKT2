@@ -164,9 +164,9 @@ class WebSocketManager: ObservableObject {
         // Start reading messages — subscribes happen after first successful receive
         receiveMessage()
 
-        // Start ping timer
+        // Start ping timer — keep alive every 15s
         pingTimer?.invalidate()
-        pingTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        pingTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.sendPing()
         }
     }
@@ -186,12 +186,12 @@ class WebSocketManager: ObservableObject {
 
     func subscribe(_ channel: String) {
         subscribedChannels.insert(channel)
-        sendAction("subscribe", channel: channel)
+        if isConnected { sendAction("subscribe", channel: channel) }
     }
 
     func unsubscribe(_ channel: String) {
         subscribedChannels.remove(channel)
-        sendAction("unsubscribe", channel: channel)
+        if isConnected { sendAction("unsubscribe", channel: channel) }
     }
 
     func unsubscribeAll() {
@@ -222,11 +222,13 @@ class WebSocketManager: ObservableObject {
             case .success(let message):
                 self.isConnecting = false
                 if !self.isConnected {
-                    Log.d("[WS] Connected")
+                    Log.d("[WS] Connected — re-subscribing to \(self.subscribedChannels.count) channels")
                     DispatchQueue.main.async { self.isConnected = true }
-                    // Re-subscribe now that connection is confirmed
-                    for channel in self.subscribedChannels {
-                        self.sendAction("subscribe", channel: channel)
+                    // Re-subscribe with slight delay to let connection stabilize
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
+                        for channel in self.subscribedChannels {
+                            self.sendAction("subscribe", channel: channel)
+                        }
                     }
                 }
                 switch message {
