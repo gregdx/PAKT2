@@ -91,6 +91,8 @@ struct ProfileView: View {
                         avgStats
 
                         weekChart
+
+                        insightCard
                     }
 
                     // Achievements
@@ -374,6 +376,65 @@ struct ProfileView: View {
         .liquidGlass(cornerRadius: 16)
         .padding(.horizontal, 24)
         .padding(.top, 20)
+    }
+
+    // MARK: - Insight card
+
+    @ViewBuilder
+    private var insightCard: some View {
+        let data = stManager.profileHistory
+        let withData = data.filter { $0.minutes > 0 }
+        let today = stManager.profileToday
+        let weekAvg = stManager.profileWeekAvg
+
+        if withData.count >= 2 || today > 0 {
+            let insight = computeInsight(data: withData, today: today, weekAvg: weekAvg)
+            if !insight.isEmpty {
+                HStack(spacing: 12) {
+                    Text(insight.0)
+                        .font(.system(size: 22))
+                    Text(insight.1)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Theme.textMuted)
+                        .lineLimit(2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .liquidGlass(cornerRadius: 14)
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+            }
+        }
+    }
+
+    private func computeInsight(data: [ProfileDayData], today: Int, weekAvg: Int) -> (String, String) {
+        let goal = goalMinutes
+        // Best day this week
+        if let best = data.min(by: { $0.minutes < $1.minutes }), best.minutes > 0 && data.count >= 3 {
+            let bestLabel = best.label
+            // Today vs average
+            if today > 0 && weekAvg > 0 {
+                let diff = weekAvg - today
+                if diff > 15 {
+                    return ("💪", "\(L10n.t("today")): \(formatTime(today)) — \(formatTime(diff)) \(L10n.t("under_goal_label").lowercased()) \(L10n.t("week_avg").lowercased())")
+                } else if diff < -15 {
+                    return ("📱", "\(L10n.t("today")): \(formatTime(today)) — \(formatTime(-diff)) \(L10n.t("over_goal_label")) \(L10n.t("week_avg").lowercased())")
+                }
+            }
+            // Best day insight
+            if best.minutes <= goal {
+                return ("🏆", "\(L10n.t("best_day")): \(bestLabel) (\(formatTime(best.minutes)))")
+            }
+        }
+        // Streak encouragement
+        if stManager.currentStreak >= 3 {
+            return ("🔥", "\(stManager.currentStreak) \(L10n.t("day_streak")) — \(L10n.t("under_goal_keep"))")
+        }
+        // Under goal today
+        if today > 0 && today <= goal {
+            return ("✅", "\(L10n.t("today")): \(formatTime(today)) — \(L10n.t("under_goal_keep"))")
+        }
+        return ("", "")
     }
 
     // MARK: - Header

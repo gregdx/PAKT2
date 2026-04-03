@@ -49,6 +49,8 @@ struct MemberProfileView: View {
     }
     var numberColor: Color { Theme.text }
 
+    @State private var appeared = false
+
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
@@ -62,9 +64,12 @@ struct MemberProfileView: View {
                     objectiveSection.padding(.horizontal, 24).padding(.top, 24)
                     Spacer().frame(height: 80)
                 }
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 12)
             }
         }
         .navigationBarHidden(true)
+        .onAppear { withAnimation(.easeOut(duration: 0.3)) { appeared = true } }
         .task {
             if let profile = try? await APIClient.shared.getUserProfile(uid: member.uid) {
                 await MainActor.run { memberAchievements = Set(profile.achievements) }

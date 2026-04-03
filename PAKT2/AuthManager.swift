@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import AuthenticationServices
+import Contacts
 import CryptoKit
 
 // MARK: - AuthManager
@@ -377,7 +378,25 @@ class AuthManager: ObservableObject {
     }
 
     func matchContacts() async {
-        // TODO: read contacts and match emails
+        let store = CNContactStore()
+        do {
+            let granted = try await store.requestAccess(for: .contacts)
+            guard granted else { return }
+            let keys = [CNContactEmailAddressesKey] as [CNKeyDescriptor]
+            let request = CNContactFetchRequest(keysToFetch: keys)
+            var emails: [String] = []
+            try store.enumerateContacts(with: request) { contact, _ in
+                for email in contact.emailAddresses {
+                    emails.append(email.value as String)
+                }
+            }
+            guard !emails.isEmpty else { return }
+            let results = try await APIClient.shared.matchContacts(emails: emails)
+            let users = results.map { $0.toAppUser() }
+            await MainActor.run { self.matchedContacts = users }
+        } catch {
+            Log.e("[AUTH] matchContacts error: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Private Helpers

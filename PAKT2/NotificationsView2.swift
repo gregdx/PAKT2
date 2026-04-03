@@ -152,6 +152,8 @@ struct NotificationsView: View {
     @ObservedObject private var invManager = InvitationManager.shared
     @Environment(\.dismiss) var dismiss
 
+    @State private var appeared = false
+
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
@@ -182,9 +184,11 @@ struct NotificationsView: View {
 
                     Spacer().frame(height: 60)
                 }
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 12)
             }
         }
-        .onAppear { /* listener démarré dans ContentView */ }
+        .onAppear { withAnimation(.easeOut(duration: 0.3)) { appeared = true } }
     }
 
     var emptyState: some View {

@@ -43,6 +43,8 @@ struct SettingsView: View {
         }
     }
 
+    @State private var appeared = false
+
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
@@ -61,10 +63,13 @@ struct SettingsView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 60)
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 12)
                 }
             }
         }
         .onAppear {
+            withAnimation(.easeOut(duration: 0.3)) { appeared = true }
             goalHours = appState.goalHours
             socialGoalHours = appState.socialGoalHours
             newUsername = appState.userName

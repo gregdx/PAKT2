@@ -11,6 +11,8 @@ struct FriendsView: View {
     @State private var avatarCache       : [String: UIImage] = [:]
     @State private var friendToRemove   : AppUser? = nil
 
+    @State private var appeared = false
+
     var body: some View {
         NavigationView {
         ZStack {
@@ -33,10 +35,13 @@ struct FriendsView: View {
                     inviteLinkSection
                     Spacer().frame(height: 60)
                 }
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 12)
             }
         }
         .navigationBarHidden(true)
         }
+        .onAppear { withAnimation(.easeOut(duration: 0.3)) { appeared = true } }
         .onAppear { /* listener démarré dans ContentView */ }
         .alert(L10n.t("remove"), isPresented: Binding(
             get: { friendToRemove != nil },
