@@ -161,12 +161,7 @@ class WebSocketManager: ObservableObject {
         // Don't set isConnected=true until we actually receive a message
         reconnectAttempts = 0
 
-        // Re-subscribe to previously subscribed channels
-        for channel in subscribedChannels {
-            sendAction("subscribe", channel: channel)
-        }
-
-        // Start reading messages
+        // Start reading messages — subscribes happen after first successful receive
         receiveMessage()
 
         // Start ping timer
@@ -229,6 +224,10 @@ class WebSocketManager: ObservableObject {
                 if !self.isConnected {
                     Log.d("[WS] Connected")
                     DispatchQueue.main.async { self.isConnected = true }
+                    // Re-subscribe now that connection is confirmed
+                    for channel in self.subscribedChannels {
+                        self.sendAction("subscribe", channel: channel)
+                    }
                 }
                 switch message {
                 case .string(let text):
