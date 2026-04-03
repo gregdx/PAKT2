@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct GroupDetailView: View {
     let groupId: UUID
