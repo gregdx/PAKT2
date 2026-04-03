@@ -1075,15 +1075,13 @@ struct ConversationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            conversationHeader
-
-            Rectangle().fill(Theme.separator).frame(height: 0.5)
-
-            // Messages area
+            // Messages area (full screen, padded top for header)
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 0) {
+                        // Space for floating header
+                        Spacer().frame(height: 110)
+
                         ForEach(Array(chatMessages.enumerated()), id: \.element.id) { index, msg in
                             VStack(spacing: 0) {
                                 // Timestamp between message groups
@@ -1155,6 +1153,7 @@ struct ConversationView: View {
             inputBar
         }
         .background(Theme.bg)
+        .overlay(alignment: .top) { conversationHeader }
         .sheet(isPresented: $showActivityPicker) {
             ActivityPickerSheet(friendUid: friendUid).environmentObject(appState)
         }
@@ -1258,6 +1257,11 @@ struct ConversationView: View {
         .padding(.horizontal, 16)
         .padding(.top, 56)
         .padding(.bottom, 10)
+        .background(
+            Theme.bg.opacity(0.85)
+                .overlay(.ultraThinMaterial)
+                .ignoresSafeArea(edges: .top)
+        )
     }
 
     // MARK: - Input bar
