@@ -551,15 +551,6 @@ class APIClient {
         let _: EmptyResponse = try await request(.DELETE, "/chat/\(id)")
     }
 
-    // MARK: - Group Photos
-
-    func uploadGroupPhoto(groupID: String, base64: String) async throws {
-        let _: EmptyResponse = try await request(.PUT, "/groupphoto/\(groupID)", body: PhotoBody(photoBase64: base64))
-    }
-
-    func getGroupPhoto(groupID: String) async throws -> PhotoResponse {
-        try await request(.GET, "/groupphoto/\(groupID)")
-    }
 }
 
 // MARK: - Helpers

@@ -344,12 +344,6 @@ class AppState: ObservableObject {
             // Propager les données screen time locales aux groupes fraîchement chargés
             ScreenTimeManager.shared.loadProfileCache()
             ScreenTimeManager.shared.updateLocalGroups(appState: self)
-            // Fetch group photos from server (if not cached locally)
-            for group in self.groups {
-                if self.loadGroupImage(for: group.id) == nil {
-                    self.fetchGroupImageFromServer(for: group.id)
-                }
-            }
         }
         // Charger le cumul historique depuis le backend (userScores)
         let uid = currentUID
@@ -502,62 +496,11 @@ class AppState: ObservableObject {
     }
 
     func deleteGroup(_ group: Group) {
-        deleteGroupImage(for: group.id)
         groups.removeAll { $0.id == group.id }
         saveGroupsLocal()
         Task {
             try? await APIClient.shared.deleteGroup(group.id.uuidString)
         }
-    }
-
-    // MARK: - Group photos (local file cache)
-
-    private func groupPhotoURL(for groupId: UUID) -> URL {
-        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("group_photos")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("\(groupId.uuidString).jpg")
-    }
-
-    func saveGroupImage(_ uiImage: UIImage, for groupId: UUID) {
-        if let data = uiImage.jpegData(compressionQuality: 0.7) {
-            try? data.write(to: groupPhotoURL(for: groupId))
-            // Upload to backend
-            let base64 = data.base64EncodedString()
-            Task { try? await APIClient.shared.uploadGroupPhoto(groupID: groupId.uuidString, base64: base64) }
-        }
-    }
-
-    func loadGroupImage(for groupId: UUID) -> UIImage? {
-        if let data = try? Data(contentsOf: groupPhotoURL(for: groupId)),
-           let img = UIImage(data: data) {
-            // Revalidate in background if cache is older than 30s
-            let file = groupPhotoURL(for: groupId)
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
-               let modified = attrs[.modificationDate] as? Date,
-               Date().timeIntervalSince(modified) > 30 {
-                fetchGroupImageFromServer(for: groupId)
-            }
-            return img
-        }
-        // No cache — try to fetch
-        fetchGroupImageFromServer(for: groupId)
-        return nil
-    }
-
-    func fetchGroupImageFromServer(for groupId: UUID) {
-        Task {
-            guard let response = try? await APIClient.shared.getGroupPhoto(groupID: groupId.uuidString),
-                  !response.photoBase64.isEmpty,
-                  let data = Data(base64Encoded: response.photoBase64),
-                  let img = UIImage(data: data) else { return }
-            try? data.write(to: groupPhotoURL(for: groupId))
-            await MainActor.run { self.objectWillChange.send() }
-        }
-    }
-
-    func deleteGroupImage(for groupId: UUID) {
-        try? FileManager.default.removeItem(at: groupPhotoURL(for: groupId))
     }
 
     // MARK: - Sign out

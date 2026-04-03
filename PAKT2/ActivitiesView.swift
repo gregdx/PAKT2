@@ -895,20 +895,17 @@ struct ActivitiesView: View {
         let lastMsg = manager.messagesForGroup(group.id.uuidString).last
 
         return HStack(spacing: 14) {
-            // Group photo or stacked avatars
-            if let groupPhoto = appState.loadGroupImage(for: group.id) {
-                Image(uiImage: groupPhoto)
-                    .resizable().scaledToFill()
-                    .frame(width: 52, height: 52)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-            } else {
-                ZStack {
-                    Circle().fill(Theme.bgWarm).frame(width: 52, height: 52)
-                    Text(String(group.name.prefix(1)).uppercased())
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(Theme.textMuted)
+            // Stacked member avatars
+            ZStack {
+                ForEach(Array(group.members.prefix(3).enumerated()), id: \.offset) { i, member in
+                    AvatarView(name: member.name, size: 36, color: Theme.textMuted,
+                               uid: member.uid, isMe: appState.isMe(member))
+                        .environmentObject(appState)
+                        .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
+                        .offset(x: CGFloat(i) * 10)
                 }
             }
+            .frame(width: 52, height: 52)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {

@@ -27,20 +27,13 @@ struct GroupChatView: View {
                         .foregroundColor(Theme.text)
                 }
 
-                // Group photo or member avatars
-                if let groupPhoto = appState.loadGroupImage(for: group.id) {
-                    Image(uiImage: groupPhoto)
-                        .resizable().scaledToFill()
-                        .frame(width: 34, height: 34)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                } else {
-                    HStack(spacing: -6) {
-                        ForEach(group.members.prefix(3), id: \.id) { member in
-                            AvatarView(name: member.name, size: 28, color: Theme.textMuted,
-                                       uid: member.uid, isMe: appState.isMe(member))
-                                .environmentObject(appState)
-                                .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
-                        }
+                // Member avatars
+                HStack(spacing: -6) {
+                    ForEach(group.members.prefix(3), id: \.id) { member in
+                        AvatarView(name: member.name, size: 28, color: Theme.textMuted,
+                                   uid: member.uid, isMe: appState.isMe(member))
+                            .environmentObject(appState)
+                            .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
                     }
                 }
 

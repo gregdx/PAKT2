@@ -1,5 +1,4 @@
 import SwiftUI
-import PhotosUI
 
 struct EditGroupView: View {
     let group: Group
@@ -8,8 +7,6 @@ struct EditGroupView: View {
     @StateObject private var fm = FriendManager.shared
 
     @State private var name          : String            = ""
-    @State private var selectedPhoto : PhotosPickerItem? = nil
-    @State private var groupImage    : UIImage?          = nil
     @State private var showDelete    = false
     @State private var showLeave     = false
     @State private var saved         = false
@@ -40,44 +37,14 @@ struct EditGroupView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 32) {
 
-                        // Group photo
-                        if isCreator {
-                            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                                ZStack {
-                                    if let img = groupImage {
-                                        Image(uiImage: img).resizable().scaledToFill()
-                                            .frame(width: 80, height: 80)
-                                            .clipShape(RoundedRectangle(cornerRadius: 20))
-                                    } else {
-                                        RoundedRectangle(cornerRadius: 20).fill(Theme.bgWarm).frame(width: 80, height: 80)
-                                        Text(String(name.prefix(1)).uppercased())
-                                            .font(.system(size: 32, weight: .bold)).foregroundColor(Theme.textMuted)
-                                    }
-                                    Circle().fill(Theme.text).frame(width: 26, height: 26)
-                                        .overlay(Image(systemName: "camera").font(.system(size: 13, weight: .medium)).foregroundColor(.white))
-                                        .offset(x: 28, y: 28)
-                                }
-                            }
-                            .onChange(of: selectedPhoto) { newItem in
-                                Task {
-                                    if let data = try? await newItem?.loadTransferable(type: Data.self),
-                                       let img  = UIImage(data: data) {
-                                        groupImage = img
-                                    }
-                                }
-                            }
-                        } else {
-                            // Non-creator: show photo read-only
-                            ZStack {
-                                if let img = groupImage {
-                                    Image(uiImage: img).resizable().scaledToFill()
-                                        .frame(width: 80, height: 80)
-                                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                                } else {
-                                    RoundedRectangle(cornerRadius: 20).fill(Theme.bgWarm).frame(width: 80, height: 80)
-                                    Text(String(name.prefix(1)).uppercased())
-                                        .font(.system(size: 32, weight: .bold)).foregroundColor(Theme.textMuted)
-                                }
+                        // Member avatars
+                        HStack(spacing: -10) {
+                            ForEach(Array(group.members.prefix(5).enumerated()), id: \.offset) { i, member in
+                                AvatarView(name: member.name, size: 40, color: Theme.textMuted,
+                                           uid: member.uid, isMe: appState.isMe(member))
+                                    .environmentObject(appState)
+                                    .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
+                                    .zIndex(Double(5 - i))
                             }
                         }
 
@@ -244,7 +211,6 @@ struct EditGroupView: View {
         }
         .onAppear {
             name = group.name
-            groupImage = appState.loadGroupImage(for: group.id)
         }
         .confirmationDialog("\(L10n.t("delete")) \"\(group.name)\"?", isPresented: $showDelete, titleVisibility: .visible) {
             Button(L10n.t("delete_group"), role: .destructive) { appState.deleteGroup(group); dismiss() }
@@ -331,9 +297,6 @@ struct EditGroupView: View {
 
     func saveChanges() {
         var updated = group; updated.name = name
-        if let img = groupImage {
-            appState.saveGroupImage(img, for: group.id)
-        }
         appState.updateGroup(updated)
         withAnimation { saved = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { dismiss() }

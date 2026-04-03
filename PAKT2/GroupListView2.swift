@@ -355,25 +355,17 @@ struct GroupCard: View {
 
             // Members row
             HStack(spacing: -8) {
-                if let groupPhoto = appState.loadGroupImage(for: group.id) {
-                    Image(uiImage: groupPhoto)
-                        .resizable().scaledToFill()
-                        .frame(width: 36, height: 36)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .padding(.trailing, 8)
-                } else {
-                    ForEach(Array(group.members.prefix(6).enumerated()), id: \.offset) { i, member in
-                        AvatarView(name: member.name, size: 32, color: Theme.textMuted,
-                                   uid: member.uid, isMe: appState.isMe(member))
-                            .environmentObject(appState)
-                            .overlay(
-                                Circle()
-                                    .stroke(.ultraThinMaterial, lineWidth: 2)
-                            )
-                            .zIndex(Double(6 - i))
-                    }
+                ForEach(Array(group.members.prefix(6).enumerated()), id: \.offset) { i, member in
+                    AvatarView(name: member.name, size: 32, color: Theme.textMuted,
+                               uid: member.uid, isMe: appState.isMe(member))
+                        .environmentObject(appState)
+                        .overlay(
+                            Circle()
+                                .stroke(.ultraThinMaterial, lineWidth: 2)
+                        )
+                        .zIndex(Double(6 - i))
                 }
-                if appState.loadGroupImage(for: group.id) == nil && group.members.count > 6 {
+                if group.members.count > 6 {
                     Text("+\(group.members.count - 6)")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(Theme.textFaint)
