@@ -1237,18 +1237,23 @@ struct ConversationView: View {
                     .foregroundColor(Theme.text)
             }
             Button(action: { showFriendProfile = true }) {
-                HStack(spacing: 10) {
-                    AvatarView(name: friendName, size: 34, color: Theme.textMuted,
+                HStack(spacing: 12) {
+                    AvatarView(name: friendName, size: 38, color: Theme.textMuted,
                                uid: friendUid, isMe: false)
                         .environmentObject(appState)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(friendName)
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(Theme.text)
-                    }
+                    Text(friendName)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Theme.text)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.textFaint)
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .liquidGlass(cornerRadius: 16)
             }
-            Spacer()
+            .buttonStyle(PlainButtonStyle())
         }
         .padding(.horizontal, 16)
         .padding(.top, 56)
