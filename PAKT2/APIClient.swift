@@ -553,6 +553,77 @@ class APIClient {
         let _: EmptyResponse = try await request(.DELETE, "/chat/\(id)")
     }
 
+    // MARK: - Events
+
+    struct AttendRequest: Encodable {
+        let eventId: String
+        let status: String
+        let title: String
+        let description: String
+        let date: String
+        let endDate: String
+        let location: String
+        let address: String
+        let source: String
+        let sourceUrl: String
+        let imageUrl: String
+    }
+
+    func setEventAttendance(_ req: AttendRequest) async throws {
+        let _: EmptyResponse = try await request(.POST, "/events/attend", body: req)
+    }
+
+    func removeEventAttendance(eventId: String) async throws {
+        let _: EmptyResponse = try await request(.DELETE, "/events/\(eventId)/attend")
+    }
+
+    struct APIEventAttendee: Decodable {
+        let eventId: String
+        let userId: String
+        let username: String
+        let status: String
+    }
+
+    func getEventAttendees(eventId: String) async throws -> [APIEventAttendee] {
+        try await request(.GET, "/events/\(eventId)/attendees")
+    }
+
+    struct APIUserEvent: Decodable, Identifiable {
+        let id: String
+        let title: String
+        let description: String
+        let date: Date
+        let endDate: Date?
+        let location: String
+        let address: String
+        let source: String
+        let sourceUrl: String
+        let imageUrl: String
+        let status: String
+
+        private enum CodingKeys: String, CodingKey {
+            case id, title, description, date, endDate, location, address, source, sourceUrl, imageUrl, status
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            title = try container.decode(String.self, forKey: .title)
+            description = try container.decode(String.self, forKey: .description)
+            date = try container.decode(Date.self, forKey: .date)
+            endDate = try? container.decode(Date.self, forKey: .endDate)
+            location = try container.decode(String.self, forKey: .location)
+            address = try container.decode(String.self, forKey: .address)
+            source = try container.decode(String.self, forKey: .source)
+            sourceUrl = try container.decode(String.self, forKey: .sourceUrl)
+            imageUrl = try container.decode(String.self, forKey: .imageUrl)
+            status = try container.decode(String.self, forKey: .status)
+        }
+    }
+
+    func getUserEvents(userId: String) async throws -> [APIUserEvent] {
+        try await request(.GET, "/users/\(userId)/events")
+    }
 }
 
 // MARK: - Helpers

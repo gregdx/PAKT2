@@ -2,113 +2,161 @@ import SwiftUI
 
 struct FriendProfileView: View {
     let user: AppUser
+    var inline: Bool = false
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
     @State private var unlockedIds: Set<String> = []
     @State private var isLoading = true
     @State private var memberSince: Date? = nil
+    @State private var appearAnimation = false
+    @State private var headerAnimation = false
+    @State private var scrollOffset: CGFloat = 0
+    @State private var tappedAchievementId: String?
+    @State private var showingParticles: [String: Bool] = [:]
+    @Namespace private var animation
 
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    // Header
-                    HStack {
-                        Button(action: { dismiss() }) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(Theme.textMuted)
-                        }
-                        .accessibilityLabel(L10n.t("done"))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 60)
-                    .padding(.bottom, 16)
-
-                    // Avatar + name
-                    AvatarView(name: user.firstName, size: 88, color: Theme.textMuted,
-                               uid: user.id, isMe: false)
-                        .environmentObject(appState)
-
-                    Text(user.firstName)
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(Theme.text)
-                        .padding(.top, 12)
-
-                    if let since = memberSince {
-                        Text(L10n.t("veteran") + " · " + since.formatted(.dateTime.month(.wide).year()))
-                            .font(.system(size: 14))
-                            .foregroundColor(Theme.textFaint)
-                            .padding(.top, 4)
-                    }
-
-                    if !user.bio.isEmpty {
-                        Text(user.bio)
-                            .font(.system(size: 16))
-                            .foregroundColor(Theme.textMuted)
-                            .multilineTextAlignment(.center)
-                            .padding(.top, 8)
-                            .padding(.horizontal, 40)
-                    }
-
-                    // Achievements grid
-                    VStack(alignment: .leading, spacing: 16) {
-                        SectionTitle(text: L10n.t("medals"))
-                            .padding(.horizontal, 24)
-
-                        if isLoading {
-                            HStack { Spacer(); ProgressView().tint(Theme.textFaint); Spacer() }
-                                .padding(.vertical, 20)
-                        } else {
-                            LazyVGrid(columns: [
-                                GridItem(.flexible()),
-                                GridItem(.flexible()),
-                                GridItem(.flexible())
-                            ], spacing: 16) {
-                                ForEach(AchievementDef.all) { achievement in
-                                    let unlocked = unlockedIds.contains(achievement.id)
-                                    VStack(spacing: 8) {
-                                        ZStack {
-                                            Circle()
-                                                .fill(unlocked ? achievement.color.opacity(0.15) : Theme.bgWarm)
-                                                .frame(width: 44, height: 44)
-                                            Image(systemName: achievement.icon)
-                                                .font(.system(size: 18, weight: .medium))
-                                                .foregroundColor(unlocked ? achievement.color : Theme.textFaint)
-                                        }
-                                        Text(achievement.name)
-                                            .font(.system(size: 12, weight: unlocked ? .semibold : .regular))
-                                            .foregroundColor(unlocked ? Theme.text : Theme.textFaint)
-                                            .multilineTextAlignment(.center)
-                                            .lineLimit(2)
-                                            .frame(height: 30)
+            
+            // ScrollView avec détection de l'offset pour parallaxe
+            GeometryReader { geometry in
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        if !inline {
+                            // Header
+                            HStack {
+                                Button(action: {
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                        dismiss()
                                     }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .opacity(unlocked ? 1.0 : 0.4)
+                                }) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.system(size: 18, weight: .medium))
+                                        .foregroundColor(Theme.textMuted)
                                 }
+                                .accessibilityLabel(L10n.t("done"))
+                                Spacer()
                             }
                             .padding(.horizontal, 24)
+                            .padding(.top, 56)
+                            .padding(.bottom, 16)
+                            .offset(y: scrollOffset * 0.3)
+                        } else {
+                            Spacer().frame(height: 16)
                         }
 
-                        // Count
-                        let count = unlockedIds.count
-                        let total = AchievementDef.all.count
-                        Text("\(count)/\(total)")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(Theme.textMuted)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 8)
-                    }
-                    .padding(.top, 28)
+                        // Avatar + name avec effet parallaxe
+                        AvatarView(name: user.firstName, size: 88, color: Theme.textMuted,
+                                   uid: user.id, isMe: false)
+                            .environmentObject(appState)
+                            .scaleEffect(headerAnimation ? 1.0 : 0.5)
+                            .opacity(headerAnimation ? 1.0 : 0.0)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.7), value: headerAnimation)
+                            .offset(y: scrollOffset * 0.5) // Effet parallaxe
+                            .scaleEffect(1.0 + min(max(scrollOffset, -100), 0) / 500) // Scale au scroll vers le haut
 
-                    Spacer().frame(height: 60)
+                        Text(user.firstName)
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(Theme.text)
+                            .padding(.top, 12)
+                            .opacity(headerAnimation ? 1.0 : 0.0)
+                            .offset(y: headerAnimation ? 0 : 20)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1), value: headerAnimation)
+                            .offset(y: scrollOffset * 0.4)
+
+                        if let since = memberSince {
+                            Text(L10n.t("veteran") + " · " + since.formatted(.dateTime.month(.wide).year()))
+                                .font(.system(size: 14))
+                                .foregroundColor(Theme.textFaint)
+                                .padding(.top, 4)
+                                .opacity(headerAnimation ? 1.0 : 0.0)
+                                .offset(y: headerAnimation ? 0 : 20)
+                                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.15), value: headerAnimation)
+                                .offset(y: scrollOffset * 0.35)
+                        }
+
+                        if !user.bio.isEmpty {
+                            Text(user.bio)
+                                .font(.system(size: 16))
+                                .foregroundColor(Theme.textMuted)
+                                .multilineTextAlignment(.center)
+                                .padding(.top, 8)
+                                .padding(.horizontal, 40)
+                                .opacity(headerAnimation ? 1.0 : 0.0)
+                                .offset(y: headerAnimation ? 0 : 20)
+                                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2), value: headerAnimation)
+                                .offset(y: scrollOffset * 0.25)
+                        }
+
+                        // Events the friend is attending — shown FIRST
+                        FriendEventsSection(userId: user.id)
+                            .padding(.top, 28)
+
+                    // Achievements — compact, only unlocked
+                    if !isLoading && !unlockedIds.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                SectionTitle(text: L10n.t("medals"))
+                                Spacer()
+                                Text("\(unlockedIds.count)/\(AchievementDef.all.count)")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(Theme.textFaint)
+                            }
+                            .padding(.horizontal, 24)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(AchievementDef.all.filter { unlockedIds.contains($0.id) }) { achievement in
+                                        VStack(spacing: 6) {
+                                            ZStack {
+                                                Circle()
+                                                    .fill(achievement.color.opacity(0.15))
+                                                    .frame(width: 40, height: 40)
+                                                Image(systemName: achievement.icon)
+                                                    .font(.system(size: 16, weight: .medium))
+                                                    .foregroundColor(achievement.color)
+                                            }
+                                            Text(achievement.name)
+                                                .font(.system(size: 11, weight: .semibold))
+                                                .foregroundColor(Theme.text)
+                                                .lineLimit(1)
+                                                .frame(width: 64)
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 24)
+                            }
+                        }
+                        .padding(.top, 20)
+                    }
+
+                        Spacer().frame(height: 60)
+                    }
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear
+                                .preference(key: ScrollOffsetPreferenceKey.self,
+                                          value: geo.frame(in: .named("scroll")).minY)
+                        }
+                    )
+                }
+                .coordinateSpace(name: "scroll")
+                .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
+                    scrollOffset = value
                 }
             }
         }
-        .navigationBarHidden(true)
+        .transition(.asymmetric(
+            insertion: .move(edge: .trailing).combined(with: .opacity),
+            removal: .move(edge: .trailing).combined(with: .opacity)
+        ))
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            withAnimation {
+                headerAnimation = true
+            }
+        }
         .task {
             do {
                 let profile = try await APIClient.shared.getUserProfile(uid: user.id)
@@ -116,6 +164,11 @@ struct FriendProfileView: View {
                     unlockedIds = Set(profile.achievements)
                     memberSince = profile.memberSince
                     isLoading = false
+                    
+                    // Déclencher l'animation des médailles après un court délai
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        appearAnimation = true
+                    }
                 }
             } catch {
                 await MainActor.run { isLoading = false }
@@ -123,3 +176,71 @@ struct FriendProfileView: View {
         }
     }
 }
+// MARK: - Preference Key pour le scroll offset
+struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+// MARK: - Effet de particules
+struct ParticleEffectView: View {
+    let color: Color
+    @State private var particles: [Particle] = []
+    
+    struct Particle: Identifiable {
+        let id = UUID()
+        var x: CGFloat
+        var y: CGFloat
+        var scale: CGFloat
+        var opacity: Double
+    }
+    
+    var body: some View {
+        ZStack {
+            ForEach(particles) { particle in
+                Circle()
+                    .fill(color)
+                    .frame(width: 4, height: 4)
+                    .scaleEffect(particle.scale)
+                    .opacity(particle.opacity)
+                    .offset(x: particle.x, y: particle.y)
+            }
+        }
+        .onAppear {
+            generateParticles()
+        }
+    }
+    
+    func generateParticles() {
+        for _ in 0..<12 {
+            let angle = Double.random(in: 0...(2 * .pi))
+            let distance = CGFloat.random(in: 20...40)
+            
+            let particle = Particle(
+                x: cos(angle) * distance,
+                y: sin(angle) * distance,
+                scale: Double.random(in: 0.5...1.5),
+                opacity: 0
+            )
+            
+            particles.append(particle)
+        }
+        
+        // Animer les particules
+        withAnimation(.easeOut(duration: 0.6)) {
+            for i in 0..<particles.count {
+                particles[i].opacity = 1.0
+            }
+        }
+        
+        withAnimation(.easeIn(duration: 0.4).delay(0.2)) {
+            for i in 0..<particles.count {
+                particles[i].opacity = 0
+                particles[i].scale *= 0.5
+            }
+        }
+    }
+}
+

@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "PAKTLOGO.png",
+      "filename" : "PAKTDARKLOGO.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -13,7 +13,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "PAKTDARKLOGO.png",
+      "filename" : "PAKTLOGO 2.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -25,7 +25,7 @@
           "value" : "tinted"
         }
       ],
-      "filename" : "PAKTLOGO 2.png",
+      "filename" : "PAKTLOGO 3.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"

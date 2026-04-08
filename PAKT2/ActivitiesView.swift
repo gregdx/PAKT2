@@ -29,7 +29,7 @@ enum ProposalResponse: String, Codable, CaseIterable {
 
 // MARK: - Chat message model (text OR activity)
 
-struct ChatMessage: Identifiable, Codable {
+struct ChatMessage: Identifiable, Codable, Equatable {
     var id: String = UUID().uuidString
     var fromId: String
     var fromName: String
@@ -204,7 +204,8 @@ final class ActivityManager: ObservableObject {
     }
 
     private func saveLocal() {
-        guard let data = try? JSONEncoder().encode(messages) else { return }
+        let toSave = messages.suffix(500)
+        guard let data = try? JSONEncoder().encode(Array(toSave)) else { return }
         UserDefaults.standard.set(data, forKey: storageKey)
     }
 
@@ -565,491 +566,17 @@ final class ActivityManager: ObservableObject {
         let peerUnread = activeConversationUids().reduce(0) { $0 + unreadCount(for: $1) }
         return peerUnread
     }
-}
-
-
-// MARK: - Chat destination
-
-enum ChatDestination: Identifiable, Hashable {
-    case friend(uid: String, name: String)
-    case group(id: UUID)
-
-    var id: String {
-        switch self {
-        case .friend(let uid, _): return "friend_\(uid)"
-        case .group(let id): return "group_\(id)"
-        }
-    }
-}
-
-// MARK: - Conversations list
-
-enum MessageTab: CaseIterable {
-    case friends, groups
-
-    var label: String {
-        switch self {
-        case .friends: return L10n.t("friends")
-        case .groups:  return L10n.t("groups")
-        }
-    }
-}
-
-struct ActivitiesView: View {
-    @EnvironmentObject var appState: AppState
-    @ObservedObject private var manager = ActivityManager.shared
-    @ObservedObject private var fm = FriendManager.shared
-    @State private var activeChat: ChatDestination? = nil
-    @State private var showNewConversation = false
-    @State private var selectedTab: MessageTab = .friends
-    @State private var showArchived = false
-    @State private var searchText = ""
-
-    var body: some View {
-        ZStack {
-            Theme.bg.ignoresSafeArea()
-
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    header
-
-                    if showArchived {
-                        archivedSection
-                    } else {
-                        tabSelector
-                        searchBar
-
-                        switch selectedTab {
-                        case .friends:
-                            friendsList
-                        case .groups:
-                            groupsList
-                        }
-                    }
-
-                    Spacer().frame(height: 100)
-                }
-            }
-            .refreshable {
-                manager.load()
-                manager.loadAllPeerReceipts()
-                for group in appState.groups where group.isActive {
-                    manager.loadGroupMessages(group.id.uuidString)
-                }
-                clearAllPhotoCaches()
-            }
-        }
-        .sheet(isPresented: $showNewConversation) { friendPickerSheet }
-        .fullScreenCover(item: $activeChat) { chat in
-            switch chat {
-            case .friend(let uid, let name):
-                SwipeDismissView {
-                    ConversationView(friendUid: uid, friendName: name, onClose: { activeChat = nil })
-                        .environmentObject(appState)
-                } onDismiss: { activeChat = nil }
-            case .group(let gid):
-                if let group = appState.groups.first(where: { $0.id == gid }) {
-                    SwipeDismissView {
-                        GroupChatView(group: group)
-                            .environmentObject(appState)
-                    } onDismiss: { activeChat = nil }
-                }
-            }
-        }
-        .onAppear {
-            manager.load()
-            manager.loadAllPeerReceipts()
-            manager.objectWillChange.send()
-        }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack(alignment: .center) {
-            if showArchived {
-                Button(action: { withAnimation { showArchived = false } }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Theme.text)
-                }
-            }
-            Text(showArchived ? L10n.t("archive") : L10n.t("activities_title"))
-                .font(.system(size: 28, weight: .bold))
-                .foregroundColor(Theme.text)
-            Spacer()
-            HStack(spacing: 8) {
-                if !showArchived {
-                    let archivedCount = manager.archivedConversationUids().count
-                    if archivedCount > 0 {
-                        Button(action: { withAnimation { showArchived = true } }) {
-                            Image(systemName: "archivebox")
-                                .font(.system(size: 15))
-                                .foregroundColor(Theme.textMuted)
-                                .frame(width: 36, height: 36)
-                                .liquidGlass(cornerRadius: 10)
-                        }
-                    }
-                }
-                Button(action: { showNewConversation = true }) {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 15))
-                        .foregroundColor(Theme.textMuted)
-                        .frame(width: 36, height: 36)
-                        .liquidGlass(cornerRadius: 10)
-                }
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 60)
-        .padding(.bottom, 16)
-    }
-
-    // MARK: - Tab selector (moved above search)
-
-    private var tabSelector: some View {
-        HStack(spacing: 8) {
-            ForEach(MessageTab.allCases, id: \.self) { tab in
-                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { selectedTab = tab } }) {
-                    Text(tab.label)
-                        .font(.system(size: 15, weight: selectedTab == tab ? .semibold : .regular))
-                        .foregroundColor(selectedTab == tab ? Theme.bg : Theme.textMuted)
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 20)
-                        .background {
-                            if selectedTab == tab {
-                                RoundedRectangle(cornerRadius: 20).fill(Theme.text)
-                            } else {
-                                RoundedRectangle(cornerRadius: 20).fill(.clear).liquidGlass(cornerRadius: 20)
-                            }
-                        }
-                }
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 20)
-    }
-
-    // MARK: - Search bar
-
-    private var searchBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 15))
-                .foregroundColor(Theme.textFaint)
-            TextField(L10n.t("search_friends"), text: $searchText)
-                .font(.system(size: 16))
-                .foregroundColor(Theme.text)
-                .autocapitalization(.none)
-                .disableAutocorrection(true)
-            if !searchText.isEmpty {
-                Button(action: { searchText = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 15))
-                        .foregroundColor(Theme.textFaint)
-                }
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .liquidGlass(cornerRadius: 12)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 12)
-    }
-
-    // MARK: - Friends tab
-
-    private var friendsList: some View {
-        let convUids = searchText.isEmpty
-            ? manager.activeConversationUids()
-            : manager.activeConversationUids().filter { uid in
-                let name = fm.friends.first { $0.id == uid }?.firstName ?? ""
-                return name.lowercased().contains(searchText.lowercased())
-            }
-
-        return VStack(spacing: 0) {
-            if fm.friends.isEmpty && convUids.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "person.2")
-                        .font(.system(size: 32))
-                        .foregroundColor(Theme.textFaint)
-                    Text(L10n.t("no_friends_yet"))
-                        .font(.system(size: 15))
-                        .foregroundColor(Theme.textMuted)
-                }
-                .padding(.top, 60)
-            } else {
-                // Active conversations (sorted by most recent)
-                VStack(spacing: 10) {
-                    ForEach(convUids, id: \.self) { uid in
-                        conversationCard(uid: uid)
-                    }
-                }
-                .padding(.horizontal, 20)
-            }
-        }
-    }
-
-    // MARK: - Archived section
-
-    private var archivedSection: some View {
-        let uids = manager.archivedConversationUids()
-        return VStack(spacing: 0) {
-            if uids.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "archivebox")
-                        .font(.system(size: 32))
-                        .foregroundColor(Theme.textFaint)
-                    Text(L10n.t("no_archived_conversations"))
-                        .font(.system(size: 15))
-                        .foregroundColor(Theme.textMuted)
-                }
-                .padding(.top, 60)
-            } else {
-                ForEach(uids, id: \.self) { uid in
-                    conversationCard(uid: uid, isArchived: true)
-                }
-            }
-        }
-    }
-
-    // MARK: - Groups tab
-
-    private var groupsList: some View {
-        let sortedGroups = appState.groups.filter { $0.isActive }.sorted { g1, g2 in
-            let last1 = manager.messagesForGroup(g1.id.uuidString).last?.createdAt ?? .distantPast
-            let last2 = manager.messagesForGroup(g2.id.uuidString).last?.createdAt ?? .distantPast
-            return last1 > last2
-        }.filter { searchText.isEmpty || $0.name.lowercased().contains(searchText.lowercased()) }
-
-        return VStack(spacing: 0) {
-            if sortedGroups.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "person.3")
-                        .font(.system(size: 32))
-                        .foregroundColor(Theme.textFaint)
-                    Text(L10n.t("no_challenges"))
-                        .font(.system(size: 15))
-                        .foregroundColor(Theme.textMuted)
-                }
-                .padding(.top, 60)
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(sortedGroups) { group in
-                        Button(action: { activeChat = .group(id: group.id) }) {
-                            groupChatCard(group)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .padding(.horizontal, 20)
-            }
-        }
-    }
-
-    private func groupChatCard(_ group: Group) -> some View {
-        let lastMsg = manager.messagesForGroup(group.id.uuidString).last
-
-        return HStack(spacing: 14) {
-            // Stacked member avatars
-            ZStack {
-                ForEach(Array(group.members.prefix(3).enumerated()), id: \.offset) { i, member in
-                    AvatarView(name: member.name, size: 36, color: Theme.textMuted,
-                               uid: member.uid, isMe: appState.isMe(member))
-                        .environmentObject(appState)
-                        .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
-                        .offset(x: CGFloat(i) * 10)
-                }
-            }
-            .frame(width: 52, height: 52)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(group.name)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(Theme.text)
-                    Spacer()
-                    if let last = lastMsg {
-                        Text(timeAgo(last.createdAt))
-                            .font(.system(size: 12))
-                            .foregroundColor(Theme.textFaint)
-                    }
-                }
-
-                HStack(spacing: 4) {
-                    if let last = lastMsg, let text = last.text {
-                        Text(last.isFromMe ? "\(L10n.t("you")): \(text)" : "\(last.fromName): \(text)")
-                            .font(.system(size: 14))
-                            .foregroundColor(Theme.textMuted)
-                            .lineLimit(1)
-                    } else {
-                        Text("\(group.members.count) \(L10n.t("members_count"))")
-                            .font(.system(size: 14))
-                            .foregroundColor(Theme.textFaint)
-                    }
-                    Spacer()
-                }
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-        .liquidGlass(cornerRadius: 16)
-    }
-
-    // MARK: - Conversation card with swipe actions
-
-    private func conversationCard(uid: String, isArchived: Bool = false) -> some View {
-        let friend = fm.friends.first { $0.id == uid }
-        let nameFromMessages = manager.messagesWithFriend(uid).last(where: { $0.fromId == uid })?.fromName
-        let name = friend?.firstName ?? nameFromMessages ?? uid.prefix(8).description
-        let last = manager.lastMessage(with: uid)
-        let hasUnread = manager.hasUnreadMessages(from: uid)
-        let seen = manager.seenByPeer(uid)
-
-        return Button(action: { activeChat = .friend(uid: uid, name: name) }) {
-            HStack(spacing: 14) {
-                AvatarView(name: name, size: 52, color: Theme.textMuted, uid: uid, isMe: false)
-                    .environmentObject(appState)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(name)
-                            .font(.system(size: 16, weight: hasUnread ? .bold : .regular))
-                            .foregroundColor(Theme.text)
-                        Spacer()
-                        if let last {
-                            Text(timeAgo(last.createdAt))
-                                .font(.system(size: 12))
-                                .foregroundColor(hasUnread ? Theme.text : Theme.textFaint)
-                        }
-                    }
-
-                    HStack(spacing: 4) {
-                        if let last {
-                            if let title = last.activityTitle, let emoji = last.activityEmoji {
-                                HStack(spacing: 4) {
-                                    if last.isFromMe { Text("\(L10n.t("you")):").font(.system(size: 14)).foregroundColor(Theme.textMuted) }
-                                    Text(emoji).font(.system(size: 12))
-                                    Text(title)
-                                        .font(.system(size: 14, weight: hasUnread ? .medium : .regular))
-                                        .foregroundColor(hasUnread ? Theme.text : Theme.textMuted)
-                                        .lineLimit(1)
-                                }
-                            } else if let text = last.text {
-                                Text(last.isFromMe ? "\(L10n.t("you")): \(text)" : text)
-                                    .font(.system(size: 14, weight: hasUnread ? .medium : .regular))
-                                    .foregroundColor(hasUnread ? Theme.text : Theme.textMuted)
-                                    .lineLimit(1)
-                            }
-                        } else {
-                            Text(L10n.t("send_first_activity"))
-                                .font(.system(size: 13))
-                                .foregroundColor(Theme.textFaint)
-                        }
-
-                        Spacer()
-
-                        // Unread dot or seen avatar
-                        if hasUnread {
-                            Circle()
-                                .fill(Theme.text)
-                                .frame(width: 10, height: 10)
-                        } else if let last, last.isFromMe && seen {
-                            AvatarView(name: name, size: 16, color: Theme.textMuted, uid: uid, isMe: false)
-                                .environmentObject(appState)
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
-            .liquidGlass(cornerRadius: 16)
-        }
-        .buttonStyle(PlainButtonStyle())
-        .contextMenu {
-            if isArchived {
-                Button {
-                    withAnimation { manager.unarchiveConversation(uid) }
-                } label: {
-                    Label(L10n.t("unarchive"), systemImage: "tray.and.arrow.up")
-                }
-            } else {
-                Button {
-                    withAnimation { manager.archiveConversation(uid) }
-                } label: {
-                    Label(L10n.t("archive"), systemImage: "archivebox")
-                }
-            }
-            Button(role: .destructive) {
-                withAnimation { manager.deleteConversation(uid) }
-            } label: {
-                Label(L10n.t("delete"), systemImage: "trash")
-            }
-        }
-    }
-
-    // MARK: - Friend Picker Sheet
-
-    var friendPickerSheet: some View {
-        ZStack {
-            Theme.bg.ignoresSafeArea()
-            VStack(spacing: 0) {
-                HStack {
-                    Button(action: { showNewConversation = false }) {
-                        Image(systemName: "xmark").font(.system(size: 16)).foregroundColor(Theme.textMuted)
-                            .frame(width: 36, height: 36).liquidGlass(cornerRadius: 10)
-                    }
-                    Spacer()
-                    Text(L10n.t("start_conversation"))
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Theme.text)
-                    Spacer()
-                    Color.clear.frame(width: 36, height: 36)
-                }
-                .padding(.horizontal, 24).padding(.top, 52).padding(.bottom, 20)
-
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 10) {
-                        ForEach(fm.friends) { friend in
-                            Button(action: {
-                                showNewConversation = false
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                                    activeChat = .friend(uid: friend.id, name: friend.firstName)
-                                }
-                            }) {
-                                HStack(spacing: 14) {
-                                    AvatarView(name: friend.firstName, size: 44, color: Theme.textMuted,
-                                               uid: friend.id, isMe: false).environmentObject(appState)
-                                    Text(friend.firstName)
-                                        .font(.system(size: 16, weight: .medium))
-                                        .foregroundColor(Theme.text)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 13))
-                                        .foregroundColor(Theme.textFaint)
-                                }
-                                .padding(.horizontal, 18).padding(.vertical, 14)
-                                .liquidGlass(cornerRadius: 16)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 40)
-                }
-            }
-        }
-    }
 
 }
+
+
 
 // MARK: - Conversation view
 
 struct ConversationView: View {
     let friendUid: String
     let friendName: String
-    var isGroupChat: Bool = false
+    var inline: Bool = false
     var onClose: (() -> Void)? = nil
 
     @EnvironmentObject var appState: AppState
@@ -1067,6 +594,8 @@ struct ConversationView: View {
         let f = DateFormatter(); f.dateFormat = "MMM d, HH:mm"; return f
     }()
     @State private var messageToDelete: ChatMessage? = nil
+    @State private var showReportSheet = false
+    @State private var reportedMessageId: String? = nil
     @State private var localMessages: [ChatMessage] = []
     @State private var pollTimer: Timer? = nil
 
@@ -1080,7 +609,7 @@ struct ConversationView: View {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 0) {
                         // Space for floating header
-                        Spacer().frame(height: 70)
+                        Spacer().frame(height: inline ? 8 : 70)
 
                         ForEach(Array(chatMessages.enumerated()), id: \.element.id) { index, msg in
                             VStack(spacing: 0) {
@@ -1153,13 +682,13 @@ struct ConversationView: View {
 
         }
         .background(Theme.bg)
-        .overlay(alignment: .top) { conversationHeader }
+        .overlay(alignment: .top) { if !inline { conversationHeader } }
         .overlay(alignment: .bottom) { inputBar }
         .sheet(isPresented: $showActivityPicker) {
             ActivityPickerSheet(friendUid: friendUid).environmentObject(appState)
         }
         .sheet(item: $tappedVenue) { venue in
-            VenueDetailSheet(venue: venue, onInvite: {})
+            VenueDetailSheet(venue: venue, userLocation: nil, onInvite: {})
         }
         .sheet(isPresented: $showFriendProfile) {
             NavigationView {
@@ -1187,6 +716,21 @@ struct ConversationView: View {
                 }
             }
             Button(L10n.t("cancel"), role: .cancel) { messageToDelete = nil }
+        }
+        .confirmationDialog(L10n.t("report_message"), isPresented: $showReportSheet, titleVisibility: .visible) {
+            Button(L10n.t("report_inappropriate"), role: .destructive) {
+                if let msgId = reportedMessageId {
+                    Log.d("[Report] Message \(msgId) reported as inappropriate")
+                }
+                reportedMessageId = nil
+            }
+            Button(L10n.t("report_spam"), role: .destructive) {
+                if let msgId = reportedMessageId {
+                    Log.d("[Report] Message \(msgId) reported as spam")
+                }
+                reportedMessageId = nil
+            }
+            Button(L10n.t("cancel"), role: .cancel) { reportedMessageId = nil }
         }
         .onAppear {
             localMessages = manager.messagesWithFriend(friendUid)
@@ -1221,7 +765,7 @@ struct ConversationView: View {
         }
         .onReceive(manager.$messages) { _ in
             let updated = manager.messagesWithFriend(friendUid)
-            if updated.count != localMessages.count {
+            if updated != localMessages {
                 localMessages = updated
             }
         }
@@ -1366,13 +910,8 @@ struct ConversationView: View {
                         }
                         .contextMenu { messageContextMenu(msg) }
                 } else {
-                    // Text bubble
-                    Text(msg.text ?? "")
-                        .font(.system(size: 15))
-                        .foregroundColor(Theme.text)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .liquidGlass(cornerRadius: 18)
+                    // Text bubble (with event card detection)
+                    EventMessageCard(text: msg.text ?? "", isMine: isMine)
                         .contextMenu { messageContextMenu(msg) }
                 }
             }
@@ -1398,6 +937,13 @@ struct ConversationView: View {
             messageToDelete = msg
         } label: {
             Label(L10n.t("delete"), systemImage: "trash")
+        }
+
+        Button(role: .destructive) {
+            reportedMessageId = msg.id
+            showReportSheet = true
+        } label: {
+            Label(L10n.t("report"), systemImage: "exclamationmark.triangle")
         }
     }
 
@@ -1435,9 +981,10 @@ struct ConversationView: View {
                         .font(.system(size: 13))
                         .foregroundColor(Theme.textFaint)
                     HStack(spacing: 4) {
-                        Image(systemName: "location.fill").font(.system(size: 10))
-                        Text(String(format: "%.1f km", venue.distance))
+                        Image(systemName: "mappin").font(.system(size: 10))
+                        Text(venue.address)
                             .font(.system(size: 12, weight: .semibold))
+                            .lineLimit(1)
                     }
                     .foregroundColor(Theme.textMuted)
                 }
@@ -1573,7 +1120,7 @@ struct ActivityPickerSheet: View {
 
                 // Tabs
                 HStack(spacing: 8) {
-                    ForEach(DiscoverTab.allCases, id: \.self) { tab in
+                    ForEach([DiscoverTab.spots, DiscoverTab.free], id: \.self) { tab in
                         Button(action: { withAnimation(.easeInOut(duration: 0.2)) { pickerTab = tab } }) {
                             Text(tab.label)
                                 .font(.system(size: 14, weight: pickerTab == tab ? .semibold : .regular))
@@ -1642,7 +1189,7 @@ struct ActivityPickerSheet: View {
                             .foregroundColor(Theme.textFaint)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 10)
-                    .liquidGlass(cornerRadius: 14)
+                    .liquidGlass(cornerRadius: 16)
                 }
                 .buttonStyle(PlainButtonStyle())
             }
@@ -1679,7 +1226,7 @@ struct ActivityPickerSheet: View {
                             .foregroundColor(Theme.textFaint)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 10)
-                    .liquidGlass(cornerRadius: 14)
+                    .liquidGlass(cornerRadius: 16)
                 }
                 .buttonStyle(PlainButtonStyle())
             }
@@ -1688,30 +1235,3 @@ struct ActivityPickerSheet: View {
     }
 }
 
-// MARK: - Location Manager
-
-import CoreLocation
-
-final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    private let manager = CLLocationManager()
-    @Published var isAuthorized = false
-
-    override init() {
-        super.init()
-        manager.delegate = self
-        checkStatus()
-    }
-
-    func requestPermission() {
-        manager.requestWhenInUseAuthorization()
-    }
-
-    private func checkStatus() {
-        let status = manager.authorizationStatus
-        isAuthorized = (status == .authorizedWhenInUse || status == .authorizedAlways)
-    }
-
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        DispatchQueue.main.async { self.checkStatus() }
-    }
-}

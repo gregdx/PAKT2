@@ -3,15 +3,19 @@ import Combine
 
 struct GroupChatView: View {
     let group: Group
+    var inline: Bool = false
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
     @ObservedObject private var manager = ActivityManager.shared
     @State private var textInput = ""
     @FocusState private var isTextFocused: Bool
     @State private var messageToDelete: ChatMessage? = nil
+    @State private var showReportSheet = false
+    @State private var reportedMessageId: String? = nil
     @State private var showGroupSettings = false
     @State private var localMessages: [ChatMessage] = []
     @State private var pollTimer: Timer? = nil
+    @State private var selectedMember: AppUser? = nil
 
     var groupId: String { group.id.uuidString }
     var myUid: String { manager.myUid }
@@ -19,40 +23,41 @@ struct GroupChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 12) {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Theme.text)
-                }
+            if !inline {
+                // Header (only in fullscreen mode)
+                HStack(spacing: 12) {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(Theme.text)
+                    }
 
-                // Member avatars
-                HStack(spacing: -6) {
-                    ForEach(group.members.prefix(3), id: \.id) { member in
-                        AvatarView(name: member.name, size: 28, color: Theme.textMuted,
-                                   uid: member.uid, isMe: appState.isMe(member))
-                            .environmentObject(appState)
-                            .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
+                    HStack(spacing: -6) {
+                        ForEach(group.members.prefix(3), id: \.id) { member in
+                            AvatarView(name: member.name, size: 28, color: Theme.textMuted,
+                                       uid: member.uid, isMe: appState.isMe(member))
+                                .environmentObject(appState)
+                                .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
+                        }
+                    }
+
+                    Text(group.name)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(Theme.text)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    Button(action: { showGroupSettings = true }) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 16))
+                            .foregroundColor(Theme.textMuted)
                     }
                 }
+                .padding(.horizontal, 16).padding(.top, 56).padding(.bottom, 10)
 
-                Text(group.name)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(Theme.text)
-                    .lineLimit(1)
-
-                Spacer()
-
-                Button(action: { showGroupSettings = true }) {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 16))
-                        .foregroundColor(Theme.textMuted)
-                }
+                Rectangle().fill(Theme.separator).frame(height: 0.5)
             }
-            .padding(.horizontal, 16).padding(.top, 56).padding(.bottom, 10)
-
-            Rectangle().fill(Theme.separator).frame(height: 0.5)
 
             // Messages
             ScrollViewReader { proxy in
@@ -144,7 +149,7 @@ struct GroupChatView: View {
                         }
                     }
                     .padding(.horizontal, 14).padding(.vertical, 8)
-                    .liquidGlass(cornerRadius: 20)
+                    .liquidGlass(cornerRadius: 20, style: .ultraThin)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
             }
@@ -171,8 +176,27 @@ struct GroupChatView: View {
             }
             Button(L10n.t("cancel"), role: .cancel) { messageToDelete = nil }
         }
+        .confirmationDialog(L10n.t("report_message"), isPresented: $showReportSheet, titleVisibility: .visible) {
+            Button(L10n.t("report_inappropriate"), role: .destructive) {
+                if let msgId = reportedMessageId {
+                    Log.d("[Report] Message \(msgId) reported as inappropriate")
+                }
+                reportedMessageId = nil
+            }
+            Button(L10n.t("report_spam"), role: .destructive) {
+                if let msgId = reportedMessageId {
+                    Log.d("[Report] Message \(msgId) reported as spam")
+                }
+                reportedMessageId = nil
+            }
+            Button(L10n.t("cancel"), role: .cancel) { reportedMessageId = nil }
+        }
         .sheet(isPresented: $showGroupSettings) {
             EditGroupView(group: group)
+                .environmentObject(appState)
+        }
+        .sheet(item: $selectedMember) { member in
+            FriendDetailView(friend: member)
                 .environmentObject(appState)
         }
         .onAppear {
@@ -198,7 +222,7 @@ struct GroupChatView: View {
         }
         .onReceive(manager.$messages) { _ in
             let updated = manager.messagesForGroup(groupId)
-            if updated.count != localMessages.count {
+            if updated != localMessages {
                 localMessages = updated
             }
         }
@@ -209,6 +233,8 @@ struct GroupChatView: View {
         guard !t.isEmpty else { return }
         manager.sendGroupText(t, groupId: groupId)
         textInput = ""
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        PaktAnalytics.track(.messageSent, properties: ["context": "group"])
     }
 
     // MARK: - Timestamp logic
@@ -255,6 +281,17 @@ struct GroupChatView: View {
         return current.fromId != next.fromId || next.createdAt.timeIntervalSince(current.createdAt) > 15 * 60
     }
 
+    private func openMemberProfile(_ uid: String, name: String) {
+        guard uid != myUid else { return }
+        let fm = FriendManager.shared
+        if let friend = fm.friends.first(where: { $0.id == uid }) {
+            selectedMember = friend
+        } else {
+            // Build a minimal AppUser for non-friends
+            selectedMember = AppUser(id: uid, firstName: name, email: "")
+        }
+    }
+
     // MARK: - Group message bubble
 
     func groupMessageBubble(_ msg: ChatMessage, index: Int) -> some View {
@@ -271,6 +308,7 @@ struct GroupChatView: View {
                     AvatarView(name: senderName, size: 28, color: Theme.textMuted,
                                uid: msg.fromId, isMe: false)
                         .environmentObject(appState)
+                        .onTapGesture { openMemberProfile(msg.fromId, name: msg.fromName) }
                 } else {
                     Spacer().frame(width: 28)
                 }
@@ -283,12 +321,9 @@ struct GroupChatView: View {
                         .foregroundColor(Theme.textMuted)
                         .padding(.leading, 4)
                         .padding(.bottom, 2)
+                        .onTapGesture { openMemberProfile(msg.fromId, name: msg.fromName) }
                 }
-                Text(msg.text ?? "")
-                    .font(.system(size: 15))
-                    .foregroundColor(Theme.text)
-                    .padding(.horizontal, 14).padding(.vertical, 9)
-                    .liquidGlass(cornerRadius: 18)
+                EventMessageCard(text: msg.text ?? "", isMine: isMine)
                     .contextMenu {
                         if let text = msg.text {
                             Button {
@@ -296,6 +331,12 @@ struct GroupChatView: View {
                             } label: {
                                 Label(L10n.t("copy"), systemImage: "doc.on.doc")
                             }
+                        }
+                        Button {
+                            reportedMessageId = msg.id
+                            showReportSheet = true
+                        } label: {
+                            Label(L10n.t("report"), systemImage: "exclamationmark.triangle")
                         }
                         Button(role: .destructive) {
                             messageToDelete = msg

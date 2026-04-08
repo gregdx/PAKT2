@@ -9,6 +9,12 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>PAKT uses your location to show activities and spots near you.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>PAKT uses your calendar to add events you're interested in.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>PAKT uses your calendar to add events you're interested in.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>PAKT uses your contacts to help you find friends.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
