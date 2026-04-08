@@ -93,10 +93,10 @@ struct CreateGroupView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 28).padding(.bottom, 32)
+                .padding(.horizontal, 24).padding(.bottom, 32)
             }
             PrimaryButton(label: L10n.t("continue")) { step = 1 }
-                .padding(.horizontal, 28).padding(.bottom, 52)
+                .padding(.horizontal, 24).padding(.bottom, 52)
                 .opacity(name.isEmpty ? 0.35 : 1)
                 .disabled(name.isEmpty)
         }
@@ -115,7 +115,7 @@ struct CreateGroupView: View {
                 Spacer()
             }
             .padding(18)
-            .liquidGlass(cornerRadius: 14)
+            .liquidGlass(cornerRadius: 16)
             .opacity(mode == m ? 1.0 : 0.7)
         }
     }
@@ -133,7 +133,7 @@ struct CreateGroupView: View {
                 Spacer()
             }
             .padding(18)
-            .liquidGlass(cornerRadius: 14)
+            .liquidGlass(cornerRadius: 16)
             .opacity(scope == s ? 1.0 : 0.7)
         }
     }
@@ -155,18 +155,18 @@ struct CreateGroupView: View {
 
                 VStack(spacing: 10) {
                     Slider(value: $goalHours, in: 0.5...6, step: 0.5)
-                        .accentColor(Theme.text).padding(.horizontal, 28)
+                        .accentColor(Theme.text).padding(.horizontal, 24)
                     HStack {
                         Text("30 min").font(.system(size: 14)).foregroundColor(Theme.textFaint)
                         Spacer()
                         Text("6h").font(.system(size: 14)).foregroundColor(Theme.textFaint)
                     }
-                    .padding(.horizontal, 28)
+                    .padding(.horizontal, 24)
                 }
             }
             Spacer()
             PrimaryButton(label: L10n.t("continue")) { step = 2 }
-                .padding(.horizontal, 28).padding(.bottom, 52)
+                .padding(.horizontal, 24).padding(.bottom, 52)
         }
     }
 
@@ -190,7 +190,7 @@ struct CreateGroupView: View {
                                 Spacer()
                             }
                             .padding(18)
-                            .liquidGlass(cornerRadius: 14)
+                            .liquidGlass(cornerRadius: 16)
                             .opacity(stake == option ? 1.0 : 0.7)
                         }
                     }
@@ -208,7 +208,7 @@ struct CreateGroupView: View {
                             Spacer()
                         }
                         .padding(18)
-                        .liquidGlass(cornerRadius: 14)
+                        .liquidGlass(cornerRadius: 16)
                         .opacity(stake == .custom ? 1.0 : 0.7)
                     }
 
@@ -221,12 +221,12 @@ struct CreateGroupView: View {
                         Rectangle().fill(Theme.border).frame(height: 1)
                     }
                 }
-                .padding(.horizontal, 28)
+                .padding(.horizontal, 24)
                 .padding(.bottom, 32)
             }
             Spacer()
             PrimaryButton(label: L10n.t("continue")) { step = 3 }
-                .padding(.horizontal, 28).padding(.bottom, 52)
+                .padding(.horizontal, 24).padding(.bottom, 52)
                 .opacity(stake == .custom && customStake.isEmpty ? 0.35 : 1)
                 .disabled(stake == .custom && customStake.isEmpty)
         }
@@ -270,7 +270,7 @@ struct CreateGroupView: View {
             }
             Spacer()
             PrimaryButton(label: L10n.t("continue")) { step = 4 }
-                .padding(.horizontal, 28).padding(.bottom, 52)
+                .padding(.horizontal, 24).padding(.bottom, 52)
         }
     }
 
@@ -324,10 +324,10 @@ struct CreateGroupView: View {
                     }
                 }
             }
-            .padding(.horizontal, 28)
+            .padding(.horizontal, 24)
             Spacer()
             PrimaryButton(label: L10n.t("create_group_btn")) { createGroup() }
-                .padding(.horizontal, 28).padding(.bottom, 52)
+                .padding(.horizontal, 24).padding(.bottom, 52)
         }
     }
 
@@ -342,12 +342,12 @@ struct CreateGroupView: View {
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundColor(duration == d ? Theme.text : Theme.textMuted)
                 Spacer()
-                Text("\(d.days)j")
+                Text("\(d.days)d")
                     .font(.system(size: 15))
                     .foregroundColor(Theme.textFaint)
             }
             .padding(18)
-            .liquidGlass(cornerRadius: 14)
+            .liquidGlass(cornerRadius: 16)
             .opacity(duration == d ? 1.0 : 0.7)
         }
     }
@@ -382,8 +382,8 @@ struct CreateGroupView: View {
                     Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.leading, 16)
                     summaryRow(L10n.t("duration"), duration.displayName)
                 }
-                .liquidGlass(cornerRadius: 14)
-                .padding(.horizontal, 28)
+                .liquidGlass(cornerRadius: 16)
+                .padding(.horizontal, 24)
 
                 VStack(spacing: 12) {
                     Text(L10n.t("invite_code"))
@@ -408,7 +408,7 @@ struct CreateGroupView: View {
             }
             Spacer()
             PrimaryButton(label: L10n.t("view_my_group")) { dismiss() }
-                .padding(.horizontal, 28).padding(.bottom, 52)
+                .padding(.horizontal, 24).padding(.bottom, 52)
         }
     }
 
@@ -461,7 +461,7 @@ struct CreateGroupView: View {
             Spacer()
             Image(systemName: "xmark").opacity(0).font(.system(size: 18))
         }
-        .padding(.horizontal, 24).padding(.top, 60).padding(.bottom, 28)
+        .padding(.horizontal, 24).padding(.top, 56).padding(.bottom, 28)
     }
 
     func summaryRow(_ label: String, _ value: String) -> some View {

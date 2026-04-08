@@ -424,6 +424,16 @@ func makeFakeHistory(_ base: Int) -> [DataPoint] {
     }
 }
 
+func generateDemoHistory(_ days: Int, avg: Int) -> [DataPoint] {
+    let df = DateFormatter()
+    df.dateFormat = "yyyy-MM-dd"
+    return (0..<days).map { i in
+        let date = Calendar.current.date(byAdding: .day, value: -(days - 1 - i), to: Date())!
+        let variance = Int.random(in: -40...40)
+        return DataPoint(day: df.string(from: date), minutes: max(30, avg + variance))
+    }
+}
+
 // MARK: - JoinResult
 
 enum JoinResult {

@@ -22,6 +22,18 @@ struct PAKTApp: App {
             ContentView()
                 .onOpenURL { url in
                     Log.d("[PAKT] onOpenURL: \(url)")
+
+                    // Handle join links: pakt2://join/GRP-XXXX or https://pakt-app.com/join/GRP-XXXX
+                    if url.host == "join" || url.path.hasPrefix("/join/") {
+                        let code = url.lastPathComponent
+                        if !code.isEmpty && code != "join" {
+                            // Store the code to be picked up by GroupsListView
+                            UserDefaults.standard.set(code, forKey: "pendingJoinCode")
+                            NotificationCenter.default.post(name: .init("openJoinSheet"), object: code)
+                        }
+                        return
+                    }
+
                     guard url.scheme == "pakt2",
                           let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
 

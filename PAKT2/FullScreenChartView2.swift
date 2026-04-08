@@ -87,7 +87,7 @@ struct FullScreenChartView: View {
             .accessibilityLabel(L10n.t("done"))
         }
         .padding(.horizontal, 24)
-        .padding(.top, 60)
+        .padding(.top, 56)
         .padding(.bottom, 28)
     }
 

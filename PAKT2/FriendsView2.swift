@@ -178,7 +178,7 @@ struct FriendsView: View {
                         }
                     }
                 }
-                .padding(16).liquidGlass(cornerRadius: 14)
+                .padding(16).liquidGlass(cornerRadius: 16)
 
                 if !firebase.searchResults.isEmpty {
                     userList(firebase.searchResults)
@@ -233,7 +233,7 @@ struct FriendsView: View {
                     Spacer()
                     Image(systemName: "doc.on.doc").font(.system(size: 15)).foregroundColor(Theme.textFaint)
                 }
-                .padding(18).liquidGlass(cornerRadius: 14)
+                .padding(18).liquidGlass(cornerRadius: 16)
             }
             .padding(.horizontal, 24).padding(.bottom, 16)
         }
@@ -256,7 +256,7 @@ struct FriendsView: View {
                 }
             }
         }
-        .liquidGlass(cornerRadius: 14)
+        .liquidGlass(cornerRadius: 16)
     }
 
     @ViewBuilder

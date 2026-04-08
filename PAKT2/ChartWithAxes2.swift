@@ -152,9 +152,9 @@ struct ChartWithAxes: View {
 
         }
         .padding(16)
-        .liquidGlass(cornerRadius: 14)
+        .liquidGlass(cornerRadius: 16)
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: 16)
                 .stroke(Theme.border, lineWidth: 0.5)
         )
         .accessibilityElement(children: .ignore)

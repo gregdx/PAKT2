@@ -1,37 +1,34 @@
-# Ticketmaster API Integration Guide
+# Eventbrite API Integration Guide 🇧🇪
 
 ## 🎟️ Configuration
 
-### 1. Obtenir une clé API Ticketmaster
+### 1. Obtenir un token OAuth Eventbrite
 
-1. Va sur **https://developer.ticketmaster.com/**
-2. Clique sur **"Get Your API Key"**
-3. Crée un compte (gratuit)
-4. Dans ton dashboard, copie ta **API Key**
+1. Va sur **https://www.eventbrite.com/platform/**
+2. Crée un compte développeur (gratuit)
+3. Crée une app dans **Account Settings > Developer Links > API Keys**
+4. Copie ton **Private Token** (OAuth token)
 
-### 2. Ajouter la clé dans l'app
+### 2. Ajouter le token dans l'app
 
-Ouvre `TicketmasterAPI.swift` et remplace :
-
-```swift
-private let apiKey = "YOUR_API_KEY_HERE"
-```
-
-Par ta vraie clé :
+Ouvre `TicketmasterAPI.swift` (renommé mais garde ce nom) et remplace :
 
 ```swift
-private let apiKey = "ta_vraie_cle_api_ici"
+private let token = "QTAUTGG4R4NAXZS6CHQD"
 ```
 
-### 3. Ajouter les permissions de localisation
+Par ton vrai token :
+
+```swift
+private let token = "ton_token_oauth_ici"
+```
+
+### 3. Permissions de localisation
 
 Dans `Info.plist`, ajoute ces clés :
 
 ```xml
 <key>NSLocationWhenInUseUsageDescription</key>
-<string>Nous utilisons votre position pour trouver des événements près de chez vous</string>
-
-<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 <string>Nous utilisons votre position pour trouver des événements près de chez vous</string>
 ```
 
@@ -39,97 +36,100 @@ Dans `Info.plist`, ajoute ces clés :
 
 ### Onglet "Events" dans NearYouView
 
-- ✅ Affiche les événements Ticketmaster proches de la position de l'utilisateur
+- ✅ Affiche les événements Eventbrite en Belgique
 - ✅ Rayon configurable (1-20 km, par défaut 25 km)
-- ✅ Images HD des événements
-- ✅ Catégories (Music, Sports, Arts, etc.)
+- ✅ Images des événements
+- ✅ Catégories (Music, Arts & Culture, Food & Drink, etc.)
 - ✅ Date, heure, lieu
-- ✅ Prix (si disponible)
-- ✅ Lien direct vers l'achat de billets
+- ✅ Prix (gratuit ou payant)
+- ✅ Lien direct vers Eventbrite
 
 ### EventDetailSheet
 
-- 📸 Image hero de l'événement
+- 📸 Image de l'événement
 - 📅 Date et heure formatées
 - 📍 Venue (nom + adresse complète)
-- 💶 Prix (min-max ou "À partir de")
-- ℹ️ Description et notes importantes
-- 🎫 Bouton "Get Tickets" → ouvre Ticketmaster
+- 💶 Prix (gratuit ou payant)
+- ℹ️ Description complète
+- 🎫 Bouton "Get Tickets" → ouvre Eventbrite
 
 ## 🔧 API Endpoints utilisés
 
 ```swift
 // Nearby events
-GET /discovery/v2/events.json
+GET /v3/events/search/
 Parameters:
-  - apikey: your_api_key
-  - latlong: "50.8503,4.3517"  // Bruxelles
-  - radius: 25
-  - unit: "km"
-  - size: 50
-  - sort: "date,asc"
+  - location.latitude: 50.8503
+  - location.longitude: 4.3517
+  - location.within: "25km"
+  - expand: "venue,category"
+  - sort_by: "date"
+  - page_size: 50
 ```
 
 ## 🎨 Design
 
-L'intégration respecte complètement le design actuel de PAKT :
+L'intégration respecte le design PAKT :
 
 - **Liquid Glass** pour tous les cards
-- **Theme.text / Theme.textMuted** pour les couleurs
-- **Animations smooth** au chargement
-- **Glassmorphism** sur tous les éléments
-- **CachedAsyncImage** pour les images optimisées
+- **Theme colors** cohérentes
+- **Animations smooth**
+- **Glassmorphism** partout
+- **CachedAsyncImage** optimisé
 
 ## 🚀 Limites de l'API gratuite
 
-- ✅ **5000 requêtes/jour**
-- ✅ **Rate limit: 5 req/sec**
-- ✅ Parfait pour une app en développement
+- ✅ **Illimité** pour les requêtes GET
+- ✅ **Rate limit: 1000 req/heure** par IP
+- ✅ Parfait pour une app en production
 
 ## 📊 Données retournées
 
 Chaque événement contient :
 
 ```swift
-struct TMEvent {
+struct EventbriteEvent {
     let id: String
-    let name: String              // "Coldplay - Music of the Spheres"
-    let url: String               // Lien Ticketmaster
-    let images: [TMImage]         // Photos HD
-    let dates: TMDates            // Date/heure
-    let venue: TMVenue?           // Lieu (nom, adresse, coords)
-    let priceRanges: [TMPriceRange]? // Prix min/max
-    let classifications: [...]    // Catégorie, genre
-    let info: String?             // Description
-    let pleaseNote: String?       // Notes importantes
+    let name: String              // "Belgian Beer Weekend"
+    let url: String               // Lien Eventbrite
+    let logo: EventLogo?          // Image HD
+    let start: EventDateTime      // Date/heure début
+    let end: EventDateTime        // Date/heure fin
+    let venue: EventbriteVenue?   // Lieu (nom, adresse, coords)
+    let category: EventCategory?  // Catégorie
+    let isFree: Bool             // Gratuit ou non
+    let description: String?     // Description
 }
 ```
 
-## 🔄 Alternatives
+## 🇧🇪 Pourquoi Eventbrite pour la Belgique ?
 
-Si tu veux d'autres sources d'événements :
+✅ **Très populaire en Belgique** (Bruxelles, Gand, Anvers)  
+✅ **Tous types d'événements** : concerts, festivals, workshops, networking  
+✅ **API gratuite et fiable**  
+✅ **Excellent pour les petits événements locaux**  
+✅ **Intégration officielle** avec Facebook Events  
 
-1. **Eventbrite** : events.eventbriteapi.com
-2. **SeatGeek** : api.seatgeek.com
-3. **Bandsintown** : rest.bandsintown.com
+## 🎯 Événements typiques en Belgique
 
-Ticketmaster est recommandé car :
-- ✅ Meilleure couverture en Europe
-- ✅ API la plus fiable
-- ✅ Images HD de qualité
-- ✅ Catégories riches (Music, Sports, Theatre, etc.)
+- 🎵 **Concerts** : AB, Ancienne Belgique, Botanique
+- 🎭 **Théâtre & spectacles**
+- 🎨 **Expos & vernissages**
+- 🍺 **Food & drink** : beer festivals, wine tastings
+- 💼 **Networking & workshops**
+- 🏃 **Sport** : runs, yoga, fitness events
+- 🎉 **Festivals** : Tomorrowland, Couleur Café, etc.
 
-## 🎯 Next Steps
+## 🔄 Alternative si besoin
 
-Pour améliorer encore :
+Si Eventbrite ne suffit pas, tu peux aussi combiner avec :
 
-1. **Filtres par catégorie** (Music, Sports, Arts, etc.)
-2. **Recherche par mot-clé**
-3. **Favoris** (save events)
-4. **Inviter un ami** à un événement (comme les Venues)
-5. **Calendar sync** (ajouter au calendrier iOS)
+1. **Facebook Events Graph API** (nécessite review)
+2. **Meetup API** (networking events)
+3. **Last.fm Events** (concerts uniquement)
 
 ---
 
 **Made for PAKT** 🤝  
-Aide tes utilisateurs à découvrir des événements au lieu de scroller !
+Parfait pour découvrir des événements belges au lieu de scroller !
+

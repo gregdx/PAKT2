@@ -15,6 +15,9 @@ struct OnboardingView: View {
     @State private var usernameError  : String? = nil
     @State private var checkTask      : Task<Void, Never>? = nil
     @State private var acceptedTerms  = false
+    @State private var showGroupStep  = false
+    @State private var showOnboardCreate = false
+    @State private var showOnboardJoin   = false
 
     var body: some View {
         ZStack {
@@ -23,6 +26,8 @@ struct OnboardingView: View {
                 usernameStep
             } else if firebase.needsEmailVerification {
                 emailVerificationStep
+            } else if showGroupStep {
+                groupStepView
             } else {
                 switch step {
                 case 0:  welcomeStep
@@ -67,16 +72,16 @@ struct OnboardingView: View {
 
     var welcomeStep: some View {
         ZStack {
-            Color.white.ignoresSafeArea()
+            Theme.bg.ignoresSafeArea()
             VStack(spacing: 0) {
                 Spacer()
                 VStack(spacing: 20) {
                     Text("PAKT")
                         .font(.system(size: 66, weight: .bold))
-                        .foregroundColor(.black)
+                        .foregroundColor(Theme.text)
                     Text(L10n.t("tagline"))
                         .font(.system(size: 20))
-                        .foregroundColor(Color.black.opacity(0.5))
+                        .foregroundColor(Theme.textMuted)
                         .multilineTextAlignment(.center)
                         .lineSpacing(5)
                 }
@@ -85,14 +90,14 @@ struct OnboardingView: View {
                     Button(action: { isSignIn = false; step = 1 }) {
                         Text(L10n.t("get_started"))
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(.white)
+                            .foregroundColor(Theme.bg)
                             .frame(maxWidth: .infinity).padding(.vertical, 18)
-                            .background(Color.black).cornerRadius(14)
+                            .background(Theme.text).cornerRadius(14)
                     }
                     Button(action: { isSignIn = true; step = 1 }) {
                         Text(L10n.t("already_account"))
                             .font(.system(size: 15))
-                            .foregroundColor(Color.black.opacity(0.4))
+                            .foregroundColor(Theme.textFaint)
                     }
                 }
                 .padding(.horizontal, 32).padding(.bottom, 52)
@@ -114,12 +119,12 @@ struct OnboardingView: View {
                         .font(.system(size: 15)).foregroundColor(Theme.textMuted)
                 }
             }
-            .padding(.horizontal, 24).padding(.top, 60).padding(.bottom, 32)
+            .padding(.horizontal, 24).padding(.top, 56).padding(.bottom, 32)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 28) {
                     Text(isSignIn ? L10n.t("welcome_back") : L10n.t("create_account"))
-                        .font(.system(size: 34, weight: .black)).foregroundColor(Theme.text)
+                        .font(.system(size: 32, weight: .black)).foregroundColor(Theme.text)
                     if !isSignIn {
                         VStack(alignment: .leading, spacing: 4) {
                             AppField(label: L10n.t("username"), text: $firstName, uppercase: false)
@@ -239,7 +244,7 @@ struct OnboardingView: View {
         let totalPages = wtPages.count
 
         return ZStack {
-            Color.white.ignoresSafeArea()
+            Theme.bg.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Skip (not on permission page)
@@ -249,23 +254,23 @@ struct OnboardingView: View {
                         Button(action: { withAnimation { wtPage = totalPages - 1 } }) {
                             Text(L10n.t("skip"))
                                 .font(.system(size: 15, weight: .medium))
-                                .foregroundColor(Color.black.opacity(0.5))
+                                .foregroundColor(Theme.textMuted)
                         }
                     }
                 }
                 .frame(height: 20)
-                .padding(.horizontal, 28).padding(.top, 60)
+                .padding(.horizontal, 24).padding(.top, 56)
 
                 Spacer()
 
                 // Icon
                 ZStack {
                     Circle()
-                        .fill(Color.black.opacity(0.04))
+                        .fill(Theme.text.opacity(0.04))
                         .frame(width: 120, height: 120)
                     Image(systemName: currentPage.icon)
                         .font(.system(size: 50, weight: .light))
-                        .foregroundColor(.black)
+                        .foregroundColor(Theme.text)
                 }
                 .scaleEffect(1)
                 .transition(.scale.combined(with: .opacity))
@@ -275,7 +280,7 @@ struct OnboardingView: View {
                 // Title
                 Text(L10n.t(currentPage.titleKey))
                     .font(.system(size: 32, weight: .bold))
-                    .foregroundColor(.black)
+                    .foregroundColor(Theme.text)
                     .multilineTextAlignment(.center)
                     .id("title-\(wtPage)")
                     .transition(.asymmetric(
@@ -287,7 +292,7 @@ struct OnboardingView: View {
                 // Description
                 Text(L10n.t(currentPage.descKey))
                     .font(.system(size: 18))
-                    .foregroundColor(Color.black.opacity(0.45))
+                    .foregroundColor(Theme.textMuted)
                     .multilineTextAlignment(.center)
                     .lineSpacing(6)
                     .id("desc-\(wtPage)")
@@ -299,7 +304,7 @@ struct OnboardingView: View {
 
                 if isLast, let err = permissionError {
                     Text(err)
-                        .font(.system(size: 14)).foregroundColor(Color.red)
+                        .font(.system(size: 14)).foregroundColor(Theme.red)
                         .padding(.top, 12)
                 }
 
@@ -311,7 +316,7 @@ struct OnboardingView: View {
                     HStack(spacing: 8) {
                         ForEach(0..<totalPages, id: \.self) { i in
                             Capsule()
-                                .fill(i == wtPage ? Color.black : Color.black.opacity(0.15))
+                                .fill(i == wtPage ? Theme.text : Theme.text.opacity(0.15))
                                 .frame(width: i == wtPage ? 24 : 8, height: 8)
                                 .animation(.easeInOut(duration: 0.25), value: wtPage)
                         }
@@ -324,19 +329,19 @@ struct OnboardingView: View {
                                 Task {
                                     await ScreenTimeManager.shared.requestAuthorization()
                                     // Finaliser même si refusé — les données backend suffisent en fallback
-                                    finalizeOnboarding()
+                                    goToGroupStep()
                                 }
                             }) {
                                 Text(L10n.t("allow_access"))
                                     .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(.white)
+                                    .foregroundColor(Theme.bg)
                                     .frame(maxWidth: .infinity).padding(.vertical, 18)
-                                    .background(Color.black).cornerRadius(14)
+                                    .background(Theme.text).cornerRadius(14)
                             }
-                            Button(action: { finalizeOnboarding() }) {
+                            Button(action: { goToGroupStep() }) {
                                 Text(L10n.t("enter_manually"))
                                     .font(.system(size: 15))
-                                    .foregroundColor(Color.black.opacity(0.5))
+                                    .foregroundColor(Theme.textMuted)
                             }
                         }
                     } else {
@@ -344,9 +349,9 @@ struct OnboardingView: View {
                         Button(action: { withAnimation(.easeInOut(duration: 0.35)) { wtPage += 1 } }) {
                             Image(systemName: "arrow.right")
                                 .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(.white)
+                                .foregroundColor(Theme.bg)
                                 .frame(width: 60, height: 60)
-                                .background(Color.black)
+                                .background(Theme.text)
                                 .clipShape(Circle())
                         }
                     }
@@ -366,11 +371,100 @@ struct OnboardingView: View {
         }
     }
 
+    private func goToGroupStep() {
+        withAnimation(.easeInOut(duration: 0.35)) { showGroupStep = true }
+    }
+
     private func finalizeOnboarding() {
+        PaktAnalytics.track(.onboardingCompleted)
         if let user = firebase.currentUser {
+            PaktAnalytics.identify(userId: user.id)
             appState.loadAccount(uid: user.id, firstName: user.firstName, goalHours: user.goalHours)
         } else {
             appState.isOnboarded = true
+        }
+    }
+
+    // MARK: - Group Step (create or join first group)
+
+    var groupStepView: some View {
+        ZStack {
+            Theme.bg.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(Theme.text.opacity(0.04))
+                        .frame(width: 120, height: 120)
+                    Image(systemName: "person.3.fill")
+                        .font(.system(size: 50, weight: .light))
+                        .foregroundColor(Theme.text)
+                }
+                .padding(.bottom, 40)
+
+                // Title
+                Text(L10n.t("ob_group_title"))
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundColor(Theme.text)
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, 14)
+
+                // Subtitle
+                Text(L10n.t("ob_group_desc"))
+                    .font(.system(size: 18))
+                    .foregroundColor(Theme.textMuted)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(6)
+                    .padding(.horizontal, 36)
+
+                Spacer()
+                Spacer()
+
+                // Buttons
+                VStack(spacing: 14) {
+                    Button(action: { showOnboardCreate = true }) {
+                        Text(L10n.t("ob_create_group"))
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(Theme.bg)
+                            .frame(maxWidth: .infinity).padding(.vertical, 18)
+                            .background(Theme.text).cornerRadius(14)
+                    }
+                    Button(action: { showOnboardJoin = true }) {
+                        Text(L10n.t("ob_join_code"))
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(Theme.text)
+                            .frame(maxWidth: .infinity).padding(.vertical, 18)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Theme.text.opacity(0.2), lineWidth: 1)
+                            )
+                    }
+                    Button(action: { finalizeOnboarding() }) {
+                        Text(L10n.t("ob_skip_for_now"))
+                            .font(.system(size: 15))
+                            .foregroundColor(Theme.textFaint)
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(.horizontal, 32).padding(.bottom, 52)
+            }
+        }
+        .sheet(isPresented: $showOnboardCreate, onDismiss: {
+            // If user created a group, finish onboarding
+            if !appState.groups.isEmpty { finalizeOnboarding() }
+        }) {
+            CreateGroupView().environmentObject(appState)
+        }
+        .sheet(isPresented: $showOnboardJoin, onDismiss: {
+            // If user joined a group, finish onboarding
+            if !appState.groups.isEmpty { finalizeOnboarding() }
+        }) {
+            OnboardingJoinGroupSheet(isPresented: $showOnboardJoin, onJoined: {
+                finalizeOnboarding()
+            }).environmentObject(appState)
         }
     }
 
@@ -501,6 +595,110 @@ struct OnboardingView: View {
                 }
             }
             .padding(.horizontal, 32).padding(.bottom, 52)
+        }
+    }
+}
+
+// MARK: - Onboarding Join Group Sheet
+
+struct OnboardingJoinGroupSheet: View {
+    @EnvironmentObject var appState: AppState
+    @Binding var isPresented: Bool
+    var onJoined: () -> Void
+
+    @State private var code      = ""
+    @State private var isLoading = false
+    @State private var errorMsg  : String? = nil
+    @State private var joined    : Group?  = nil
+
+    var body: some View {
+        ZStack {
+            Theme.bg.ignoresSafeArea()
+            if let group = joined { successView(group) } else { entryView }
+        }
+    }
+
+    var entryView: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button(action: { isPresented = false }) {
+                    Image(systemName: "xmark").font(.system(size: 17)).foregroundColor(Theme.textMuted)
+                }
+                Spacer()
+                Text(L10n.t("join_group")).font(.system(size: 16, weight: .medium)).foregroundColor(Theme.textMuted)
+                Spacer()
+                Image(systemName: "xmark").opacity(0).font(.system(size: 17))
+            }
+            .padding(.horizontal, 24).padding(.top, 52).padding(.bottom, 40)
+
+            Spacer()
+
+            VStack(spacing: 28) {
+                VStack(spacing: 10) {
+                    Text(L10n.t("group_code"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Theme.textFaint)
+                        .tracking(1.5).textCase(.uppercase)
+                    TextField(L10n.t("group_code_placeholder"), text: $code)
+                        .font(.system(size: 40, weight: .bold))
+                        .foregroundColor(Theme.text)
+                        .multilineTextAlignment(.center)
+                        .autocapitalization(.allCharacters)
+                        .disableAutocorrection(true)
+                        .onChange(of: code) { v in code = v.uppercased(); errorMsg = nil }
+                    Rectangle().fill(Theme.border).frame(height: 1).padding(.horizontal, 40)
+                }
+                if let err = errorMsg {
+                    Text(err).font(.system(size: 15)).foregroundColor(Theme.red).multilineTextAlignment(.center)
+                }
+            }
+            .padding(.horizontal, 32)
+
+            Spacer()
+
+            PrimaryButton(label: isLoading ? L10n.t("searching") : L10n.t("join")) {
+                guard !isLoading else { return }
+                Task { await doJoin() }
+            }
+            .padding(.horizontal, 24).padding(.bottom, 52)
+            .opacity(code.count >= 8 && !isLoading ? 1 : 0.35)
+            .disabled(code.count < 8 || isLoading)
+        }
+    }
+
+    func successView(_ group: Group) -> some View {
+        VStack(spacing: 0) {
+            Spacer()
+            VStack(spacing: 24) {
+                Text("\u{2713}")
+                    .font(.system(size: 56, weight: .bold))
+                    .foregroundColor(Theme.green)
+                VStack(spacing: 10) {
+                    Text(group.name).font(.system(size: 26, weight: .bold)).foregroundColor(Theme.text)
+                    Text(L10n.t("joined_group")).font(.system(size: 16)).foregroundColor(Theme.textMuted)
+                }
+            }
+            Spacer()
+            PrimaryButton(label: L10n.t("lets_go")) {
+                isPresented = false
+                onJoined()
+            }
+                .padding(.horizontal, 24).padding(.bottom, 52)
+        }
+    }
+
+    func doJoin() async {
+        isLoading = true; errorMsg = nil
+        let result = await appState.joinGroup(code: code)
+        await MainActor.run {
+            isLoading = false
+            switch result {
+            case .success(let g):
+                joined = g
+                PaktAnalytics.track(.groupJoined)
+            case .alreadyMember:  errorMsg = L10n.t("already_in")
+            case .error(let msg): errorMsg = msg == "group not found" ? L10n.t("group_not_found") : L10n.t("something_wrong")
+            }
         }
     }
 }

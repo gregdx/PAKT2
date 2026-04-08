@@ -68,7 +68,7 @@ struct MemberProfileView: View {
                 .offset(y: appeared ? 0 : 12)
             }
         }
-        .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .onAppear { withAnimation(.easeOut(duration: 0.3)) { appeared = true } }
         .task {
             if let profile = try? await APIClient.shared.getUserProfile(uid: member.uid) {
@@ -90,7 +90,7 @@ struct MemberProfileView: View {
                 .accessibilityLabel(L10n.t("done"))
                 Spacer()
             }
-            .padding(.horizontal, 24).padding(.top, 60)
+            .padding(.horizontal, 24).padding(.top, 56)
 
             AvatarView(name: member.name, size: 72, color: color,
                        uid: member.uid, isMe: appState.isMe(member))
@@ -109,8 +109,9 @@ struct MemberProfileView: View {
             if stManager.memberStreaks[member.uid] ?? 0 > 0 {
                 let memberStreak = stManager.memberStreaks[member.uid] ?? 0
                 HStack(spacing: 8) {
-                    Text("\u{1F525}")
-                        .font(.system(size: 18))
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(Theme.orange)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(memberStreak) " + L10n.t("day_streak"))
                             .font(.system(size: 16, weight: .semibold))

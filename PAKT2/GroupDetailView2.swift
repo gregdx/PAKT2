@@ -18,6 +18,11 @@ struct GroupDetailView: View {
     @ObservedObject private var chatManager = ActivityManager.shared
     @AppStorage("isDarkMode") private var isDarkMode = false
     @State private var showGroupChat = false
+    @State private var activeTab: GroupTab = .ranking
+
+    enum GroupTab: String, CaseIterable {
+        case ranking, data, messages
+    }
 
     private var groupOpt: Group? {
         appState.groups.first { $0.id == groupId }
@@ -46,72 +51,90 @@ struct GroupDetailView: View {
                 }
                 .onAppear { dismiss() }
             } else {
-            ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
+                    // Fixed header + tab picker
                     detailHeader
 
-                    if group.isPending {
-                        pendingPaktView
-                    } else if !group.hasStarted {
-                        // Group is active but starts at midnight
-                        VStack(spacing: 24) {
-                            Spacer().frame(height: 40)
-                            Image(systemName: "moon.zzz.fill")
-                                .font(.system(size: 48))
-                                .foregroundColor(Theme.textFaint)
-                            Text(L10n.t("starts_midnight"))
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundColor(Theme.text)
-                            Text(L10n.t("challenge_begins_midnight"))
-                                .font(.system(size: 15))
-                                .foregroundColor(Theme.textMuted)
-                                .multilineTextAlignment(.center)
-                                .lineSpacing(4)
-
-                            // Members with -- scores
+                    if group.isPending || !group.hasStarted || isSyncing {
+                        // Non-active states: scrollable
+                        ScrollView(showsIndicators: false) {
                             VStack(spacing: 0) {
-                                ForEach(Array(group.members.enumerated()), id: \.element.id) { i, member in
-                                    HStack(spacing: 12) {
-                                        AvatarView(name: member.name, size: 40, color: Theme.textMuted,
-                                                   uid: member.uid, isMe: appState.isMe(member))
-                                            .environmentObject(appState)
-                                        Text(member.name)
-                                            .font(.system(size: 16, weight: .medium))
-                                            .foregroundColor(Theme.text)
-                                        Spacer()
-                                        Text("--")
-                                            .font(.system(size: 18, weight: .bold))
+                                if group.isPending {
+                                    pendingPaktView
+                                } else if !group.hasStarted {
+                                    VStack(spacing: 24) {
+                                        Spacer().frame(height: 40)
+                                        Image(systemName: "moon.zzz.fill")
+                                            .font(.system(size: 48))
                                             .foregroundColor(Theme.textFaint)
+                                        Text(L10n.t("starts_midnight"))
+                                            .font(.system(size: 22, weight: .bold))
+                                            .foregroundColor(Theme.text)
+                                        Text(L10n.t("challenge_begins_midnight"))
+                                            .font(.system(size: 15))
+                                            .foregroundColor(Theme.textMuted)
+                                            .multilineTextAlignment(.center)
+                                            .lineSpacing(4)
+                                        VStack(spacing: 0) {
+                                            ForEach(Array(group.members.enumerated()), id: \.element.id) { i, member in
+                                                HStack(spacing: 12) {
+                                                    AvatarView(name: member.name, size: 40, color: Theme.textMuted,
+                                                               uid: member.uid, isMe: appState.isMe(member))
+                                                        .environmentObject(appState)
+                                                    Text(member.name)
+                                                        .font(.system(size: 16, weight: .medium))
+                                                        .foregroundColor(Theme.text)
+                                                    Spacer()
+                                                    Text("--")
+                                                        .font(.system(size: 18, weight: .bold))
+                                                        .foregroundColor(Theme.textFaint)
+                                                }
+                                                .padding(.horizontal, 16).padding(.vertical, 12)
+                                                if i < group.members.count - 1 {
+                                                    Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.leading, 68)
+                                                }
+                                            }
+                                        }
+                                        .liquidGlass(cornerRadius: 16)
+                                        .padding(.horizontal, 24)
                                     }
-                                    .padding(.horizontal, 16).padding(.vertical, 12)
-                                    if i < group.members.count - 1 {
-                                        Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.leading, 68)
-                                    }
+                                } else {
+                                    ProgressView().padding(.top, 60)
+                                }
+                                Spacer().frame(height: 100)
+                            }
+                        }
+                    } else {
+                        // Active group: tab picker + swipable content
+                        challengeBanner
+                        groupTabBar
+
+                        TabView(selection: $activeTab) {
+                            ScrollView(showsIndicators: false) {
+                                VStack(spacing: 0) {
+                                    rankingTabContent
+                                    Spacer().frame(height: 100)
                                 }
                             }
-                            .liquidGlass(cornerRadius: 14)
-                            .padding(.horizontal, 24)
-                        }
-                    } else if !isSyncing {
-                        challengeBanner
-                        periodPicker
-                        rankingList
-                        raceChart
-                            .padding(.top, 24)
-                        groupOverview
-                            .padding(.top, 24)
-                        challengeProgress
-                            .padding(.top, 24)
-                        rulesSection
-                            .padding(.top, 24)
-                    } else {
-                        ProgressView()
-                            .padding(.top, 60)
-                    }
+                            .tag(GroupTab.ranking)
 
-                    Spacer().frame(height: 100)
+                            ScrollView(showsIndicators: false) {
+                                VStack(spacing: 0) {
+                                    membersTabContent
+                                    Spacer().frame(height: 100)
+                                }
+                            }
+                            .tag(GroupTab.data)
+
+                            GroupChatView(group: group, inline: true)
+                                .environmentObject(appState)
+                                .tag(GroupTab.messages)
+                        }
+                        .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+                        .animation(.easeInOut(duration: 0.25), value: activeTab)
+                        .ignoresSafeArea(.keyboard)
+                    }
                 }
-            }
             } // else
         }
         .navigationBarHidden(true)
@@ -135,14 +158,6 @@ struct GroupDetailView: View {
             try? await Task.sleep(nanoseconds: 500_000_000)
             if let g = groupOpt, g.isCompleted && !g.isFinished && !g.isPending {
                 showResult = true
-            }
-        }
-        .fullScreenCover(isPresented: $showGroupChat) {
-            if groupOpt != nil {
-                SwipeDismissView {
-                    GroupChatView(group: group)
-                        .environmentObject(appState)
-                } onDismiss: { showGroupChat = false }
             }
         }
         .sheet(isPresented: $showEdit) {
@@ -172,32 +187,546 @@ struct GroupDetailView: View {
     // MARK: - Extracted Sub-Views
 
     private var detailHeader: some View {
-        HStack {
+        HStack(spacing: 12) {
             Button(action: { dismiss() }) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 18, weight: .medium))
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Theme.textMuted)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(.ultraThinMaterial))
             }
-            .accessibilityLabel("Back")
+            .accessibilityLabel("Close")
             Spacer()
             Text(group.name)
                 .font(.system(size: 22, weight: .bold))
                 .foregroundColor(Theme.text)
             Spacer()
-            Button(action: { showGroupChat = true }) {
-                Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.system(size: 16))
+            ShareLink(item: "\(L10n.t("invite_message")) \(group.code)\nhttps://pakt-app.com/join/\(group.code)") {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Theme.textMuted)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(.ultraThinMaterial))
             }
-            .accessibilityLabel("Group chat")
+            .accessibilityLabel("Share group")
             Button(action: { showEdit = true }) {
                 Image(systemName: "pencil")
-                    .font(.system(size: 16))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Theme.textMuted)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(.ultraThinMaterial))
             }
             .accessibilityLabel("Edit group")
         }
-        .padding(.horizontal, 24).padding(.top, 60).padding(.bottom, 16)
+        .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 8)
+    }
+
+    // MARK: - Group Tab Picker
+
+    private var groupTabBar: some View {
+        HStack(spacing: 8) {
+            ForEach(GroupTab.allCases, id: \.self) { tab in
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) { activeTab = tab }
+                }) {
+                    Text(tabLabel(tab))
+                        .font(.system(size: 15, weight: activeTab == tab ? .semibold : .regular))
+                        .foregroundColor(activeTab == tab ? Theme.bg : Theme.textMuted)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 16)
+                        .background {
+                            if activeTab == tab {
+                                RoundedRectangle(cornerRadius: 20).fill(Theme.text)
+                            } else {
+                                RoundedRectangle(cornerRadius: 20).fill(.clear).liquidGlass(cornerRadius: 20)
+                            }
+                        }
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 8)
+    }
+
+    private func tabLabel(_ tab: GroupTab) -> String {
+        switch tab {
+        case .ranking:  return L10n.t("ranking_tab")
+        case .data:     return L10n.t("stats_tab")
+        case .messages: return L10n.t("messages_tab")
+        }
+    }
+
+    // MARK: - Ranking Tab (final + today)
+
+    private var rankingTabContent: some View {
+        VStack(spacing: 24) {
+            // Daily highlight card
+            dailyHighlight
+
+            // Podium top 3
+            podiumView
+
+            // Rest of ranking (#4+)
+            restOfRankingList
+
+            // Today ranking
+            VStack(spacing: 8) {
+                SectionTitle(text: L10n.t("ranking_today"))
+                    .padding(.horizontal, 24)
+                todayRankingList
+            }
+
+            challengeProgress
+            rulesSection
+        }
+    }
+
+    // MARK: - Daily Highlight
+
+    private var dailyHighlight: some View {
+        let sorted = group.members.sorted { group.todayRankMinutes($0) < group.todayRankMinutes($1) }
+        let leader = sorted.first
+        let underGoal = sorted.filter { group.todayRankMinutes($0) > 0 && group.todayRankMinutes($0) <= group.goalMinutes }
+
+        let message: String = {
+            if let l = leader, group.todayRankMinutes(l) > 0 {
+                return "\(l.name) leads today with \(formatTime(group.todayRankMinutes(l)))"
+            }
+            if !underGoal.isEmpty {
+                return "\(underGoal.count) members under goal today"
+            }
+            return "Day \(group.duration.days - group.daysLeft) of \(group.duration.days)"
+        }()
+
+        return HStack(spacing: 10) {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 14))
+                .foregroundColor(Theme.orange)
+            Text(message)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(Theme.text)
+            Spacer()
+        }
+        .padding(14)
+        .liquidGlass(cornerRadius: 12)
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - Podium (Top 3)
+
+    private var podiumView: some View {
+        let sorted = group.members.sorted { group.rankMinutes($0) < group.rankMinutes($1) }
+        let top3 = Array(sorted.prefix(3))
+
+        return HStack(alignment: .bottom, spacing: 20) {
+            // 2nd place (left)
+            if top3.count > 1 {
+                podiumColumn(member: top3[1], rank: 2)
+            }
+            // 1st place (center, biggest)
+            if let first = top3.first {
+                podiumColumn(member: first, rank: 1)
+            }
+            // 3rd place (right)
+            if top3.count > 2 {
+                podiumColumn(member: top3[2], rank: 3)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 20)
+    }
+
+    private func podiumColumn(member: Member, rank: Int) -> some View {
+        let avatarSize: CGFloat = rank == 1 ? 80 : 60
+        let rankColor: Color = rank == 1 ? Theme.green : (rank == 2 ? Theme.blue : Theme.orange)
+        let mins = group.rankMinutes(member)
+
+        return VStack(spacing: 6) {
+            // Avatar with ring and glow for #1
+            ZStack {
+                if rank == 1 {
+                    // Subtle radial glow behind #1
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                gradient: Gradient(colors: [Theme.green.opacity(0.20), Theme.green.opacity(0.0)]),
+                                center: .center,
+                                startRadius: avatarSize * 0.3,
+                                endRadius: avatarSize * 0.8
+                            )
+                        )
+                        .frame(width: avatarSize + 20, height: avatarSize + 20)
+                }
+                AvatarView(name: member.name, size: avatarSize, color: rankColor,
+                           uid: member.uid, isMe: appState.isMe(member))
+                    .environmentObject(appState)
+                    .overlay(
+                        Circle()
+                            .stroke(rankColor, lineWidth: rank == 1 ? 3 : 2)
+                    )
+            }
+
+            Text("#\(rank)")
+                .font(.system(size: rank == 1 ? 14 : 12, weight: .black))
+                .foregroundColor(rankColor)
+
+            Text(member.name)
+                .font(.system(size: rank == 1 ? 16 : 14, weight: .bold))
+                .foregroundColor(Theme.text)
+                .lineLimit(1)
+
+            Text(mins > 0 ? formatTime(mins) : "--")
+                .font(.system(size: rank == 1 ? 22 : 17, weight: .bold))
+                .foregroundColor(rank == 1 ? Theme.green : Theme.text)
+
+            // Subtle colored line under each column (replaces tall block)
+            RoundedRectangle(cornerRadius: 2)
+                .fill(rankColor.opacity(rank == 1 ? 0.5 : 0.3))
+                .frame(height: 3)
+                .padding(.horizontal, 8)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Rest of Ranking (#4+)
+
+    private var restOfRankingList: some View {
+        let sorted = group.members.sorted { group.rankMinutes($0) < group.rankMinutes($1) }
+        let rest = Array(sorted.dropFirst(3))
+
+        return VStack(spacing: 0) {
+            ForEach(Array(rest.enumerated()), id: \.element.id) { i, member in
+                let rank = i + 4
+                let mins = group.rankMinutes(member)
+
+                Button { selectedMemberUID = member.uid } label: {
+                    HStack(spacing: 14) {
+                        Text("#\(rank)")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(Theme.textMuted)
+                            .frame(width: 30, alignment: .leading)
+
+                        AvatarView(name: member.name, size: 44, color: Theme.textMuted,
+                                   uid: member.uid, isMe: appState.isMe(member))
+                            .environmentObject(appState)
+
+                        Text(member.name)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(Theme.text)
+
+                        Spacer()
+
+                        Text(mins > 0 ? formatTime(mins) : "--")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(mins == 0 ? Theme.textFaint : Theme.text)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.horizontal, 16).padding(.vertical, 12)
+
+                if i < rest.count - 1 {
+                    Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.leading, 68)
+                }
+            }
+        }
+        .liquidGlass(cornerRadius: 16)
+        .padding(.horizontal, 24)
+    }
+
+    private var todayRankingList: some View {
+        let sorted = group.members.sorted { group.todayRankMinutes($0) < group.todayRankMinutes($1) }
+        return VStack(spacing: 0) {
+            ForEach(Array(sorted.enumerated()), id: \.element.id) { i, member in
+                let rank = i + 1
+                let mins = group.todayRankMinutes(member)
+                let isTop3 = rank <= 3
+                let rankColor: Color = rank == 1 ? Theme.green : (rank == 2 ? Theme.blue : (rank == 3 ? Theme.orange : Theme.textFaint))
+
+                HStack(spacing: 12) {
+                    // Rank number with colored background for top 3
+                    ZStack {
+                        if isTop3 {
+                            Circle()
+                                .fill(rankColor.opacity(0.12))
+                                .frame(width: 28, height: 28)
+                        }
+                        Text("\(rank)")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(isTop3 ? rankColor : Theme.textFaint)
+                    }
+                    .frame(width: 28)
+
+                    AvatarView(name: member.name, size: 40, color: isTop3 ? rankColor : Theme.textMuted,
+                               uid: member.uid, isMe: appState.isMe(member))
+                        .environmentObject(appState)
+                        .overlay(
+                            isTop3 ? Circle().stroke(rankColor.opacity(0.4), lineWidth: 1.5) : nil
+                        )
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(member.name)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(Theme.text)
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    Text(mins > 0 ? formatTime(mins) : "--")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(mins == 0 ? Theme.textFaint : (rank == 1 ? Theme.green : Theme.text))
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+
+                if i < sorted.count - 1 {
+                    Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.leading, 64)
+                }
+            }
+        }
+        .liquidGlass(cornerRadius: 16)
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - Members Tab (stats, graphs, profiles)
+
+    private var membersTabContent: some View {
+        VStack(spacing: 20) {
+            // 1. Horizontal scroll stat bubbles
+            statsHorizontalScroll
+
+            // 2. Award cards
+            awardsSection
+
+            // 3. Goal distribution
+            goalDistribution
+
+            // 4. Race chart
+            raceChart
+
+            // 5. Compact member list
+            compactMemberList
+        }
+    }
+
+    // MARK: - Stats Horizontal Scroll
+
+    private var statsHorizontalScroll: some View {
+        let totalMinutesUsed = group.members.reduce(0) { $0 + group.rankMinutes($1) }
+        let daysElapsed = max(1, group.duration.days - group.daysLeft)
+        let expectedMinutes = group.members.count * daysElapsed * 240
+        let savedMinutes = max(0, expectedMinutes - totalMinutesUsed)
+
+        let memberDaysUnderGoal = group.members.reduce(0) { total, m in
+            total + m.history.filter { $0.minutes > 0 && $0.minutes <= group.goalMinutes }.count
+        }
+        let totalMemberDays = group.members.reduce(0) { total, m in
+            total + m.history.filter { $0.minutes > 0 }.count
+        }
+        let successRate = totalMemberDays > 0 ? (memberDaysUnderGoal * 100 / totalMemberDays) : 0
+
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                statBubble(
+                    value: formatTime(group.averageMinutes),
+                    label: L10n.t("group_avg_today"),
+                    icon: "person.3",
+                    color: group.averageMinutes <= group.goalMinutes ? Theme.green : Theme.red
+                )
+                statBubble(
+                    value: "\(savedMinutes / 60)h",
+                    label: L10n.t("hours_saved"),
+                    icon: "arrow.down.circle",
+                    color: Theme.green
+                )
+                statBubble(
+                    value: "\(successRate)%",
+                    label: L10n.t("success_rate"),
+                    icon: "checkmark.circle",
+                    color: successRate >= 50 ? Theme.green : Theme.orange
+                )
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
+    private func statBubble(value: String, label: String, icon: String, color: Color) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 20))
+                .foregroundColor(color)
+            Text(value)
+                .font(.system(size: 28, weight: .bold))
+                .foregroundColor(Theme.text)
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundColor(Theme.textFaint)
+                .multilineTextAlignment(.center)
+        }
+        .frame(width: 140)
+        .padding(.vertical, 20)
+        .liquidGlass(cornerRadius: 16)
+    }
+
+    // MARK: - Awards Section
+
+    private var awardsSection: some View {
+        let members = group.members.filter { !$0.history.isEmpty }
+
+        // Most improved: member whose last 3 days avg is lowest compared to first 3 days
+        let mostImproved: (member: Member, detail: String)? = {
+            let candidates = members.filter { $0.history.filter({ $0.minutes > 0 }).count >= 4 }
+            guard !candidates.isEmpty else { return nil }
+            var best: (Member, Int)? = nil
+            for m in candidates {
+                let active = m.history.filter { $0.minutes > 0 }
+                let first3 = active.prefix(3).map { $0.minutes }
+                let last3 = active.suffix(3).map { $0.minutes }
+                guard !first3.isEmpty, !last3.isEmpty else { continue }
+                let firstAvg = first3.reduce(0, +) / first3.count
+                let lastAvg = last3.reduce(0, +) / last3.count
+                let diff = lastAvg - firstAvg
+                if best == nil || diff < best!.1 { best = (m, diff) }
+            }
+            guard let b = best else { return nil }
+            let sign = b.1 <= 0 ? "" : "+"
+            return (b.0, "\(sign)\(b.1)min vs start")
+        }()
+
+        // Most consistent: lowest standard deviation
+        let mostConsistent: (member: Member, detail: String)? = {
+            guard !members.isEmpty else { return nil }
+            var best: (Member, Double)? = nil
+            for m in members {
+                let vals = m.history.filter { $0.minutes > 0 }.map { Double($0.minutes) }
+                guard vals.count >= 3 else { continue }
+                let mean = vals.reduce(0, +) / Double(vals.count)
+                let variance = vals.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(vals.count)
+                let stdDev = sqrt(variance)
+                if best == nil || stdDev < best!.1 { best = (m, stdDev) }
+            }
+            guard let b = best else { return nil }
+            return (b.0, "std dev: \(Int(b.1))min")
+        }()
+
+        // Best single day: lowest single day across all members
+        let bestSingleDay: (member: Member, detail: String)? = {
+            var best: (Member, DataPoint)? = nil
+            for m in members {
+                for dp in m.history where dp.minutes > 0 {
+                    if best == nil || dp.minutes < best!.1.minutes { best = (m, dp) }
+                }
+            }
+            guard let b = best else { return nil }
+            return (b.0, "\(formatTime(b.1.minutes)) — \(b.1.day)")
+        }()
+
+        // Worst single day: highest single day across all members
+        let worstSingleDay: (member: Member, detail: String)? = {
+            var worst: (Member, DataPoint)? = nil
+            for m in members {
+                for dp in m.history where dp.minutes > 0 {
+                    if worst == nil || dp.minutes > worst!.1.minutes { worst = (m, dp) }
+                }
+            }
+            guard let w = worst else { return nil }
+            return (w.0, "\(formatTime(w.1.minutes)) — \(w.1.day)")
+        }()
+
+        // Closest to goal: member whose average is closest to the goal
+        let closestToGoal: (member: Member, detail: String)? = {
+            guard !members.isEmpty else { return nil }
+            var best: (Member, Int)? = nil
+            for m in members {
+                let avg = m.monthAvgMinutes
+                guard avg > 0 else { continue }
+                let diff = abs(avg - group.goalMinutes)
+                if best == nil || diff < best!.1 { best = (m, diff) }
+            }
+            guard let b = best else { return nil }
+            let avg = b.0.monthAvgMinutes
+            let delta = avg - group.goalMinutes
+            let sign = delta <= 0 ? "" : "+"
+            return (b.0, "avg \(formatTime(avg)) (\(sign)\(delta)min)")
+        }()
+
+        return VStack(spacing: 10) {
+            SectionTitle(text: L10n.t("awards"))
+                .padding(.horizontal, 24)
+
+            if let a = mostImproved {
+                awardCard(title: L10n.t("most_improved"), member: a.member, detail: a.detail, icon: "chart.line.downtrend.xyaxis", color: Theme.green)
+            }
+            if let a = mostConsistent {
+                awardCard(title: L10n.t("most_consistent"), member: a.member, detail: a.detail, icon: "metronome", color: Theme.blue)
+            }
+            if let a = bestSingleDay {
+                awardCard(title: L10n.t("best_single_day"), member: a.member, detail: a.detail, icon: "star", color: Theme.green)
+            }
+            if let a = worstSingleDay {
+                awardCard(title: L10n.t("worst_single_day"), member: a.member, detail: a.detail, icon: "flame", color: Theme.red)
+            }
+            if let a = closestToGoal {
+                awardCard(title: L10n.t("closest_to_goal"), member: a.member, detail: a.detail, icon: "target", color: Theme.orange)
+            }
+        }
+    }
+
+    private func awardCard(title: String, member: Member, detail: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 14) {
+            AvatarView(name: member.name, size: 48, color: color, uid: member.uid, isMe: appState.isMe(member))
+                .environmentObject(appState)
+                .overlay(Circle().stroke(color.opacity(0.3), lineWidth: 2))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(color)
+                    .tracking(1)
+                Text(member.name)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(Theme.text)
+                Text(detail)
+                    .font(.system(size: 13))
+                    .foregroundColor(Theme.textMuted)
+            }
+            Spacer()
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundColor(color)
+        }
+        .padding(16)
+        .liquidGlass(cornerRadius: 16)
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - Compact Member List
+
+    private var compactMemberList: some View {
+        VStack(spacing: 6) {
+            ForEach(group.members, id: \.id) { member in
+                Button { selectedMemberUID = member.uid } label: {
+                    HStack(spacing: 12) {
+                        AvatarView(name: member.name, size: 36, color: Theme.textMuted,
+                                   uid: member.uid, isMe: appState.isMe(member))
+                            .environmentObject(appState)
+                        Text(member.name)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(Theme.text)
+                        Spacer()
+                        Text(formatTime(member.todayMinutes))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(member.todayMinutes <= group.goalMinutes ? Theme.green : Theme.textMuted)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(Theme.textFaint)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.horizontal, 14).padding(.vertical, 10)
+            }
+        }
+        .liquidGlass(cornerRadius: 16)
+        .padding(.horizontal, 24)
     }
 
     @ViewBuilder
@@ -205,8 +734,9 @@ struct GroupDetailView: View {
         if group.isCompleted {
             Button(action: { showResult = true }) {
                 HStack(spacing: 12) {
-                    Text("\u{1F3C1}")
-                        .font(.system(size: 20))
+                    Image(systemName: "flag.checkered")
+                        .font(.system(size: 18))
+                        .foregroundColor(Theme.green)
                     Text(L10n.t("challenge_complete"))
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(Theme.text)
@@ -224,100 +754,7 @@ struct GroupDetailView: View {
         }
     }
 
-    private var periodPicker: some View {
-        HStack(spacing: 0) {
-            ForEach(Period.allCases, id: \.self) { p in
-                Button(action: { withAnimation(.easeInOut(duration: 0.25)) { period = p } }) {
-                    Text(p.displayName)
-                        .font(.system(size: p == .total && period == .total ? 17 : 15, weight: period == p ? .bold : .regular))
-                        .foregroundColor(period == p ? (p == .total ? Theme.orange : Theme.text) : Theme.textFaint)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(period == p ? (p == .total ? Theme.orange.opacity(0.08) : Theme.bgCard) : Color.clear)
-                    .cornerRadius(10)
-                }
-            }
-        }
-        .padding(3)
-        .liquidGlass(cornerRadius: 10)
-        .padding(.horizontal, 24)
-        .padding(.bottom, 8)
-    }
-
-    // MARK: - Ranking List (minimal)
-
-    private var rankingList: some View {
-        VStack(spacing: 8) {
-            if isSyncing {
-                HStack(spacing: 8) {
-                    ProgressView().tint(Theme.textFaint)
-                    Text(L10n.t("loading")).font(.system(size: 14)).foregroundColor(Theme.textFaint)
-                }
-                .padding(.vertical, 10)
-            }
-            let sorted = group.members.sorted { minutesFor($0) < minutesFor($1) }
-            ForEach(Array(sorted.enumerated()), id: \.element.id) { i, member in
-                let rank = i + 1
-                let mins = minutesFor(member)
-                let scoreColor: Color = mins == 0 ? Theme.textFaint : Theme.text
-                let isLeader = period == .total && rank == 1 && mins > 0
-
-                Button {
-                    selectedMemberUID = member.uid
-                } label: {
-                    HStack(spacing: 16) {
-                        // Rank badge
-                        if isLeader {
-                            Text("\u{1F3C6}")
-                                .font(.system(size: 22))
-                                .frame(width: 36)
-                        } else if period == .total && rank == 2 && mins > 0 {
-                            Text("\u{1F948}")
-                                .font(.system(size: 20))
-                                .frame(width: 36)
-                        } else if period == .total && rank == 3 && mins > 0 {
-                            Text("\u{1F949}")
-                                .font(.system(size: 20))
-                                .frame(width: 36)
-                        } else {
-                            Text("#\(rank)")
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundColor(Theme.textMuted)
-                                .frame(width: 36, alignment: .leading)
-                        }
-
-                        AvatarView(name: member.name, size: 42, color: Theme.textMuted,
-                                   uid: member.uid, isMe: appState.isMe(member))
-                            .environmentObject(appState)
-
-                        Text(member.name)
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Theme.text)
-
-                        Spacer()
-
-                        Text(mins > 0 ? formatTime(mins) : "--")
-                            .font(.system(size: period == .total ? 24 : 20, weight: .bold))
-                            .foregroundColor(scoreColor)
-                    }
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal, 20)
-                .padding(.vertical, 18)
-                .contentShape(Rectangle())
-                .background(isLeader && period == .total ? Theme.orange.opacity(0.08) : Color.clear)
-                .liquidGlass(cornerRadius: 16)
-                .overlay(
-                    isLeader && period == .total ? RoundedRectangle(cornerRadius: 16).stroke(Theme.orange.opacity(0.4), lineWidth: 1.5) : nil
-                )
-                .padding(.horizontal, 24)
-            }
-        }
-    }
-
-    // MARK: - Member Profile Destination
-
-    @ViewBuilder
+    // (old periodPicker and rankingList removed — replaced by groupTabBar + finalRankingList/todayRankingList)
 
     // MARK: - Race Chart (inline — courbes cumulatives par membre)
 
@@ -438,7 +875,7 @@ struct GroupDetailView: View {
                 }
             }
             .padding(16)
-            .liquidGlass(cornerRadius: 14)
+            .liquidGlass(cornerRadius: 16)
             .padding(.horizontal, 24)
         }
     }
@@ -472,7 +909,7 @@ struct GroupDetailView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 20)
-                .liquidGlass(cornerRadius: 14)
+                .liquidGlass(cornerRadius: 16)
             }
 
             // Under goal — avatars row
@@ -496,7 +933,7 @@ struct GroupDetailView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .liquidGlass(cornerRadius: 14)
+                .liquidGlass(cornerRadius: 16)
             }
         }
         .padding(.horizontal, 24)
@@ -574,7 +1011,7 @@ struct GroupDetailView: View {
                     .foregroundColor(Theme.textFaint)
             }
             .padding(16)
-            .liquidGlass(cornerRadius: 14)
+            .liquidGlass(cornerRadius: 16)
             .padding(.horizontal, 24)
         }
     }
@@ -610,7 +1047,7 @@ struct GroupDetailView: View {
                 }
             }
             .padding(18)
-            .liquidGlass(cornerRadius: 14)
+            .liquidGlass(cornerRadius: 16)
             .padding(.horizontal, 24)
         }
     }
@@ -675,7 +1112,7 @@ struct GroupDetailView: View {
             }
             .padding(20)
             .frame(maxWidth: .infinity)
-            .liquidGlass(cornerRadius: 14)
+            .liquidGlass(cornerRadius: 16)
             .padding(.horizontal, 24)
 
             // Signature progress

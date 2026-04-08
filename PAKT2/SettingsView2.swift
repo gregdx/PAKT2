@@ -61,7 +61,7 @@ struct SettingsView: View {
                         deleteAccountButton
                         versionLabel
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 24)
                     .padding(.bottom, 60)
                     .opacity(appeared ? 1 : 0)
                     .offset(y: appeared ? 0 : 12)
@@ -111,8 +111,8 @@ struct SettingsView: View {
             Spacer()
             Color.clear.frame(width: 36, height: 36)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 52)
+        .padding(.horizontal, 24)
+        .padding(.top, 56)
         .padding(.bottom, 24)
     }
 
@@ -447,7 +447,7 @@ struct SettingsView: View {
             .foregroundColor(Theme.red)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .liquidGlass(cornerRadius: 14)
+            .liquidGlass(cornerRadius: 16)
         }
     }
 

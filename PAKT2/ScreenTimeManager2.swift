@@ -369,6 +369,10 @@ final class ScreenTimeManager: ObservableObject {
     // MARK: - Mettre à jour les scores locaux dans les groupes
 
     func updateLocalGroups(appState: AppState) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [self] in self.updateLocalGroups(appState: appState) }
+            return
+        }
         let today = profileToday
         let social = categorySocial
         let uid = appState.currentUID

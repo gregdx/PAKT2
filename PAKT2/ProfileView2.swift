@@ -21,6 +21,12 @@ struct ProfileView: View {
     @State private var showAllMedals = false
     @State private var showGroupDetail = false
     @State private var selectedGroupId: UUID? = nil
+    @State private var headerAppeared = false
+    @State private var statsAppeared = false
+    @State private var chartAppeared = false
+    @State private var medalsAppeared = false
+    @State private var tappedMedalId: String?
+    @State private var celebrateStreak = false
     var goalMinutes: Int { Int(appState.goalHours * 60) }
 
     private func startProfileRefresh() {
@@ -60,7 +66,9 @@ struct ProfileView: View {
 
     var body: some View {
         ZStack {
+            // Background
             Theme.bg.ignoresSafeArea()
+            
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     header
@@ -83,9 +91,7 @@ struct ProfileView: View {
 
                     // Stats SwiftUI
                     VStack(spacing: 0) {
-                        todayStats
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 16)
+                        todayScore
 
                         streakBadge
 
@@ -101,14 +107,26 @@ struct ProfileView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 24)
 
-                    Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.horizontal, 24).padding(.vertical, 24)
-                    groupsSummary.padding(.horizontal, 24)
                     Spacer().frame(height: 80)
                 }
             }
             // DARs are inline in the scroll
         }
-        .onAppear { startProfileRefresh() }
+        .onAppear { 
+            startProfileRefresh()
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                headerAppeared = true
+            }
+            withAnimation(.spring(response: 0.7, dampingFraction: 0.8).delay(0.15)) {
+                statsAppeared = true
+            }
+            withAnimation(.spring(response: 0.8, dampingFraction: 0.8).delay(0.3)) {
+                chartAppeared = true
+            }
+            withAnimation(.spring(response: 0.8, dampingFraction: 0.8).delay(0.45)) {
+                medalsAppeared = true
+            }
+        }
         .task {
             if let uid = AuthManager.shared.currentUser?.id {
                 do {
@@ -202,41 +220,21 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Today (total + social side by side)
+    // MARK: - Today score
 
-    private func colorForMinutes(_ minutes: Int, goal: Int) -> Color {
-        if minutes == 0 { return Theme.text }
-        return minutes > goal ? Theme.red : Theme.green
-    }
-
-    private var todayStats: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 6) {
-                Text(stManager.profileToday > 0 ? formatTime(stManager.profileToday) : "--")
-                    .font(.system(size: 42, weight: .bold))
-                    .foregroundColor(colorForMinutes(stManager.profileToday, goal: goalMinutes))
-                Text(L10n.t("today").uppercased())
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Theme.textFaint)
-                    .tracking(1.0)
-            }
-            .frame(maxWidth: .infinity)
-
-            Rectangle().fill(Theme.separator).frame(width: 0.5, height: 48)
-
-            VStack(spacing: 6) {
-                Text(stManager.categorySocial > 0 ? formatTime(stManager.categorySocial) : "--")
-                    .font(.system(size: 42, weight: .bold))
-                    .foregroundColor(colorForMinutes(stManager.categorySocial, goal: Int(appState.socialGoalHours * 60)))
-                Text(L10n.t("on_social_media").uppercased())
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Theme.textFaint)
-                    .tracking(1.0)
-            }
-            .frame(maxWidth: .infinity)
+    private var todayScore: some View {
+        VStack(spacing: 6) {
+            Text(stManager.profileToday > 0 ? formatTime(stManager.profileToday) : "--")
+                .font(.system(size: 48, weight: .bold))
+                .foregroundColor(Theme.text)
+                .contentTransition(.numericText())
+            Text(L10n.t("today").uppercased())
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Theme.textFaint)
+                .tracking(1.5)
         }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
     }
 
     // MARK: - Streak
@@ -246,8 +244,11 @@ struct ProfileView: View {
         let streak = stManager.currentStreak
         if streak > 0 {
             HStack(spacing: 10) {
-                Text("🔥")
-                    .font(.system(size: 20))
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(Theme.orange)
+                    .scaleEffect(celebrateStreak ? 1.3 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.5).repeatCount(3, autoreverses: true), value: celebrateStreak)
                 Text("\(streak) " + L10n.t("day_streak"))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(Theme.text)
@@ -257,6 +258,15 @@ struct ProfileView: View {
             .background(Theme.green.opacity(0.08))
             .cornerRadius(20)
             .padding(.bottom, 16)
+            .scaleEffect(statsAppeared ? 1.0 : 0.8)
+            .opacity(statsAppeared ? 1.0 : 0.0)
+            .onAppear {
+                if streak >= 3 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        celebrateStreak = true
+                    }
+                }
+            }
         }
     }
 
@@ -306,23 +316,28 @@ struct ProfileView: View {
                 }
                 .padding(.horizontal, 4)
                 .padding(.bottom, 8)
-                .transition(.opacity)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             // Columns only — no score labels above bars
             HStack(alignment: .bottom, spacing: 6) {
-                ForEach(data) { day in
+                ForEach(Array(data.enumerated()), id: \.element.id) { index, day in
                     VStack(spacing: 4) {
                         RoundedRectangle(cornerRadius: 5)
                             .fill(day.minutes > goal ? Theme.red.opacity(tappedDay == day.date ? 1.0 : 0.8) : (day.minutes > 0 ? Theme.green.opacity(tappedDay == day.date ? 1.0 : 0.7) : Theme.bgWarm))
                             .frame(height: max(4, CGFloat(day.minutes) / CGFloat(maxM) * 130))
-                            .scaleEffect(x: tappedDay == day.date ? 1.15 : 1.0, y: 1.0, anchor: .bottom)
+                            .scaleEffect(x: tappedDay == day.date ? 1.15 : 1.0, y: chartAppeared ? 1.0 : 0.01, anchor: .bottom)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.7).delay(Double(index) * 0.05), value: chartAppeared)
                         Text(day.label)
                             .font(.system(size: 12, weight: tappedDay == day.date ? .bold : .regular))
                             .foregroundColor(tappedDay == day.date ? Theme.text : Theme.textMuted)
                     }
                     .frame(maxWidth: .infinity)
                     .onTapGesture {
+                        // Haptic feedback
+                        let impact = UIImpactFeedbackGenerator(style: .light)
+                        impact.impactOccurred()
+                        
                         withAnimation(.easeInOut(duration: 0.2)) {
                             tappedDay = tappedDay == day.date ? nil : day.date
                         }
@@ -341,9 +356,15 @@ struct ProfileView: View {
         }
         .padding(.horizontal, 4)
         .padding(14)
-        .liquidGlass(cornerRadius: 16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.4))
+        )
+        .liquidGlass(cornerRadius: 16, style: .ultraThin)
         .padding(.horizontal, 24)
         .padding(.top, 20)
+        .scaleEffect(chartAppeared ? 1.0 : 0.9)
+        .opacity(chartAppeared ? 1.0 : 0.0)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(data.filter { $0.minutes > 0 }.map { "\($0.label): \(formatTime($0.minutes))" }.joined(separator: ", "))
     }
@@ -361,8 +382,9 @@ struct ProfileView: View {
             let insight = computeInsight(data: withData, today: today, weekAvg: weekAvg)
             if !insight.0.isEmpty {
                 HStack(spacing: 12) {
-                    Text(insight.0)
-                        .font(.system(size: 22))
+                    Image(systemName: insight.0)
+                        .font(.system(size: 18))
+                        .foregroundColor(Theme.orange)
                     Text(insight.1)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(Theme.textMuted)
@@ -370,7 +392,11 @@ struct ProfileView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
-                .liquidGlass(cornerRadius: 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(Color.white.opacity(0.4))
+                )
+                .liquidGlass(cornerRadius: 14, style: .ultraThin)
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
             }
@@ -386,23 +412,23 @@ struct ProfileView: View {
             if today > 0 && weekAvg > 0 {
                 let diff = weekAvg - today
                 if diff > 15 {
-                    return ("💪", "\(L10n.t("today")): \(formatTime(today)) — \(formatTime(diff)) \(L10n.t("under_goal_label").lowercased()) \(L10n.t("week_avg").lowercased())")
+                    return ("arrow.down.circle.fill", "\(L10n.t("today")): \(formatTime(today)) — \(formatTime(diff)) \(L10n.t("under_goal_label").lowercased()) \(L10n.t("week_avg").lowercased())")
                 } else if diff < -15 {
-                    return ("📱", "\(L10n.t("today")): \(formatTime(today)) — \(formatTime(-diff)) \(L10n.t("over_goal_label")) \(L10n.t("week_avg").lowercased())")
+                    return ("arrow.up.circle.fill", "\(L10n.t("today")): \(formatTime(today)) — \(formatTime(-diff)) \(L10n.t("over_goal_label")) \(L10n.t("week_avg").lowercased())")
                 }
             }
             // Best day insight
             if best.minutes <= goal {
-                return ("🏆", "\(L10n.t("best_day")): \(bestLabel) (\(formatTime(best.minutes)))")
+                return ("star.circle.fill", "\(L10n.t("best_day")): \(bestLabel) (\(formatTime(best.minutes)))")
             }
         }
         // Streak encouragement
         if stManager.currentStreak >= 3 {
-            return ("🔥", "\(stManager.currentStreak) \(L10n.t("day_streak")) — \(L10n.t("under_goal_keep"))")
+            return ("flame.fill", "\(stManager.currentStreak) \(L10n.t("day_streak")) — \(L10n.t("under_goal_keep"))")
         }
         // Under goal today
         if today > 0 && today <= goal {
-            return ("✅", "\(L10n.t("today")): \(formatTime(today)) — \(L10n.t("under_goal_keep"))")
+            return ("checkmark.circle.fill", "\(L10n.t("today")): \(formatTime(today)) — \(L10n.t("under_goal_keep"))")
         }
         return ("", "")
     }
@@ -426,12 +452,15 @@ struct ProfileView: View {
                 Text("\(count)/\(total)")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Theme.textFaint)
+                    .contentTransition(.numericText())
             }
 
             // Grid
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 14) {
-                ForEach(items) { achievement in
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, achievement in
                     let unlocked = myAchievements.contains(achievement.id)
+                    let isTapped = tappedMedalId == achievement.id
+                    
                     VStack(spacing: 6) {
                         ZStack {
                             Circle()
@@ -440,7 +469,11 @@ struct ProfileView: View {
                             Image(systemName: achievement.icon)
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundColor(unlocked ? achievement.color : Theme.textFaint)
+                                .symbolEffect(.bounce, value: isTapped)
                         }
+                        .scaleEffect(isTapped ? 1.2 : 1.0)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isTapped)
+                        
                         Text(achievement.name)
                             .font(.system(size: 11, weight: unlocked ? .semibold : .regular))
                             .foregroundColor(unlocked ? Theme.text : Theme.textFaint)
@@ -449,6 +482,25 @@ struct ProfileView: View {
                             .frame(height: 28)
                     }
                     .opacity(unlocked ? 1.0 : 0.4)
+                    .scaleEffect(medalsAppeared ? 1.0 : 0.5)
+                    .opacity(medalsAppeared ? (unlocked ? 1.0 : 0.4) : 0.0)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(Double(index) * 0.04), value: medalsAppeared)
+                    .onTapGesture {
+                        if unlocked {
+                            let impact = UIImpactFeedbackGenerator(style: .medium)
+                            impact.impactOccurred()
+                            
+                            withAnimation {
+                                tappedMedalId = achievement.id
+                            }
+                            
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                withAnimation {
+                                    tappedMedalId = nil
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -460,6 +512,7 @@ struct ProfileView: View {
                             .font(.system(size: 14, weight: .medium))
                         Image(systemName: showAllMedals ? "chevron.up" : "chevron.down")
                             .font(.system(size: 12, weight: .medium))
+                            .rotationEffect(.degrees(showAllMedals ? 0 : 180))
                     }
                     .foregroundColor(Theme.textMuted)
                     .frame(maxWidth: .infinity)
@@ -468,7 +521,13 @@ struct ProfileView: View {
             }
         }
         .padding(18)
-        .liquidGlass(cornerRadius: 16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.4))
+        )
+        .liquidGlass(cornerRadius: 16, style: .ultraThin)
+        .scaleEffect(medalsAppeared ? 1.0 : 0.9)
+        .opacity(medalsAppeared ? 1.0 : 0.0)
     }
 
     // MARK: - Header
@@ -488,24 +547,40 @@ struct ProfileView: View {
                                 .font(.system(size: 15))
                                 .foregroundColor(Theme.textMuted)
                                 .frame(width: 36, height: 36)
-                                .liquidGlass(cornerRadius: 10)
+                                .background(
+                                    Circle()
+                                        .fill(.ultraThinMaterial)
+                                )
                             if !fm.incomingRequests.isEmpty {
-                                Circle().fill(Theme.red).frame(width: 10, height: 10).offset(x: 2, y: -2)
+                                Circle()
+                                    .fill(Theme.red)
+                                    .frame(width: 10, height: 10)
+                                    .offset(x: 2, y: -2)
+                                    .scaleEffect(headerAppeared ? 1.0 : 0.0)
+                                    .animation(.spring(response: 0.4, dampingFraction: 0.6).delay(0.3), value: headerAppeared)
                             }
                         }
                     }
                     .accessibilityLabel(L10n.t("friends"))
+                    .scaleEffect(headerAppeared ? 1.0 : 0.5)
+                    .opacity(headerAppeared ? 1.0 : 0.0)
+                    
                     Button(action: { showSettings = true }) {
                         Image(systemName: "gearshape")
                             .font(.system(size: 15))
                             .foregroundColor(Theme.textMuted)
                             .frame(width: 36, height: 36)
-                            .liquidGlass(cornerRadius: 10)
+                            .background(
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                            )
                     }
                     .accessibilityLabel(L10n.t("settings"))
+                    .scaleEffect(headerAppeared ? 1.0 : 0.5)
+                    .opacity(headerAppeared ? 1.0 : 0.0)
                 }
             }
-            .padding(.horizontal, 24).padding(.top, 60)
+            .padding(.horizontal, 24).padding(.top, 56)
 
             // Avatar + name (centered)
             PhotosPicker(selection: $selectedPhoto, matching: .images) {
@@ -539,43 +614,4 @@ struct ProfileView: View {
         .padding(.bottom, 20)
     }
 
-    // MARK: - Groups summary
-
-    var groupsSummary: some View {
-        VStack(spacing: 0) {
-            SectionTitle(text: L10n.t("active_challenges"))
-            let active = appState.groups
-            if active.isEmpty {
-                Text(L10n.t("no_challenges"))
-                    .font(.system(size: 15)).foregroundColor(Theme.textFaint)
-                    .padding(.bottom, 16)
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(active) { group in
-                        Button {
-                            selectedGroupId = group.id
-                            showGroupDetail = true
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(group.name).font(.system(size: 17, weight: .semibold)).foregroundColor(Theme.text)
-                                    Text("\(group.daysLeft) \(L10n.t("days_remaining"))").font(.system(size: 14)).foregroundColor(Theme.textFaint)
-                                }
-                                Spacer()
-                                if let rank = group.rankedMembers.firstIndex(where: { appState.isMe($0) }) {
-                                    Text("#\(rank + 1)").font(.system(size: 22, weight: .bold))
-                                        .foregroundColor(Theme.text)
-                                }
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(Theme.textFaint)
-                            }
-                            .padding(18).liquidGlass(cornerRadius: 14)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-            }
-        }
-    }
 }

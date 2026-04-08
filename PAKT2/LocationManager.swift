@@ -2,9 +2,9 @@ import Foundation
 import CoreLocation
 import Combine
 
-// MARK: - Location Manager
+// MARK: - App Location Manager
 
-class LocationManager: NSObject, ObservableObject {
+class AppLocationManager: NSObject, ObservableObject {
     private let locationManager = CLLocationManager()
     
     @Published var location: CLLocation?
@@ -61,7 +61,7 @@ class LocationManager: NSObject, ObservableObject {
 
 // MARK: - CLLocationManagerDelegate
 
-extension LocationManager: CLLocationManagerDelegate {
+extension AppLocationManager: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         self.location = location

@@ -19,16 +19,23 @@ struct SwipeDismissView<Content: View>: View {
             .gesture(
                 DragGesture()
                     .onChanged { value in
-                        if value.translation.width > 0 {
+                        // Only allow dismiss if started from left edge
+                        if value.startLocation.x < 40 && value.translation.width > 0 {
                             offset = value.translation.width
                         }
                     }
                     .onEnded { value in
-                        if value.translation.width > 100 {
-                            withAnimation(.easeOut(duration: 0.2)) { offset = 500 }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { onDismiss() }
+                        if value.startLocation.x < 40 && value.translation.width > 100 {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                offset = UIScreen.main.bounds.width
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                onDismiss()
+                            }
                         } else {
-                            withAnimation(.easeOut(duration: 0.2)) { offset = 0 }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                offset = 0
+                            }
                         }
                     }
             )
@@ -186,6 +193,7 @@ struct Theme {
 
 struct LiquidGlassBackground: ViewModifier {
     var cornerRadius: CGFloat = 14
+    var style: LiquidGlassStyle = .regular
 
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
@@ -193,15 +201,143 @@ struct LiquidGlassBackground: ViewModifier {
                 .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
         } else {
             content
-                .background(.ultraThinMaterial)
-                .cornerRadius(cornerRadius)
+                .background(
+                    ZStack {
+                        // Blur glass effect avec Material
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .fill(style.material)
+                        
+                        // Subtile gradient de fond pour profondeur
+                        LinearGradient(
+                            colors: style.gradientColors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .opacity(style.gradientOpacity)
+                        .cornerRadius(cornerRadius)
+                    }
+                    .shadow(color: .black.opacity(style.shadowOpacity), radius: style.shadowRadius, x: 0, y: style.shadowY)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(style.borderTopOpacity),
+                                    Color.white.opacity(style.borderBottomOpacity)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: style.borderWidth
+                        )
+                )
+        }
+    }
+}
+
+enum LiquidGlassStyle {
+    case ultraThin    // Très transparent, presque invisible (messages)
+    case thin         // Léger et translucide
+    case regular      // Normal, équilibré
+    case thick        // Plus opaque, plus visible
+    case solid        // Presque opaque
+    
+    var material: Material {
+        switch self {
+        case .ultraThin: return .ultraThinMaterial
+        case .thin:      return .thinMaterial
+        case .regular:   return .regularMaterial
+        case .thick:     return .thickMaterial
+        case .solid:     return .thickMaterial
+        }
+    }
+    
+    var gradientColors: [Color] {
+        switch self {
+        case .ultraThin: return [Color.white.opacity(0.15), Color.white.opacity(0.08)]
+        case .thin:      return [Color.white.opacity(0.18), Color.white.opacity(0.10)]
+        case .regular:   return [Color.white.opacity(0.22), Color.white.opacity(0.12)]
+        case .thick:     return [Color.white.opacity(0.28), Color.white.opacity(0.16)]
+        case .solid:     return [Color.white.opacity(0.35), Color.white.opacity(0.22)]
+        }
+    }
+    
+    var gradientOpacity: Double {
+        switch self {
+        case .ultraThin: return 0.6
+        case .thin:      return 0.7
+        case .regular:   return 0.8
+        case .thick:     return 0.85
+        case .solid:     return 0.95
+        }
+    }
+    
+    var borderTopOpacity: Double {
+        switch self {
+        case .ultraThin: return 0.35
+        case .thin:      return 0.40
+        case .regular:   return 0.45
+        case .thick:     return 0.50
+        case .solid:     return 0.55
+        }
+    }
+    
+    var borderBottomOpacity: Double {
+        switch self {
+        case .ultraThin: return 0.10
+        case .thin:      return 0.12
+        case .regular:   return 0.15
+        case .thick:     return 0.18
+        case .solid:     return 0.22
+        }
+    }
+    
+    var borderWidth: CGFloat {
+        switch self {
+        case .ultraThin: return 1.0
+        case .thin:      return 1.0
+        case .regular:   return 1.2
+        case .thick:     return 1.5
+        case .solid:     return 2.0
+        }
+    }
+    
+    var shadowOpacity: Double {
+        switch self {
+        case .ultraThin: return 0.08
+        case .thin:      return 0.10
+        case .regular:   return 0.12
+        case .thick:     return 0.15
+        case .solid:     return 0.20
+        }
+    }
+    
+    var shadowRadius: CGFloat {
+        switch self {
+        case .ultraThin: return 8
+        case .thin:      return 10
+        case .regular:   return 12
+        case .thick:     return 14
+        case .solid:     return 16
+        }
+    }
+    
+    var shadowY: CGFloat {
+        switch self {
+        case .ultraThin: return 1
+        case .thin:      return 2
+        case .regular:   return 3
+        case .thick:     return 4
+        case .solid:     return 5
         }
     }
 }
 
 extension View {
-    func liquidGlass(cornerRadius: CGFloat = 14) -> some View {
-        modifier(LiquidGlassBackground(cornerRadius: cornerRadius))
+    /// Applique l'effet Liquid Glass avec un style spécifique
+    func liquidGlass(cornerRadius: CGFloat = 14, style: LiquidGlassStyle = .regular) -> some View {
+        modifier(LiquidGlassBackground(cornerRadius: cornerRadius, style: style))
     }
 }
 
@@ -319,7 +455,11 @@ struct PrimaryButton: View {
                 .foregroundColor(Theme.text)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 20)
-                .liquidGlass(cornerRadius: 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Theme.text.opacity(0.08))
+                )
+                .liquidGlass(cornerRadius: 16, style: .ultraThin)
         }
     }
 }

@@ -7,7 +7,7 @@ struct ContentView: View {
     @StateObject private var networkMonitor = NetworkMonitor()
     @Environment(\.scenePhase) private var scenePhase
     @State private var showLaunch  = true
-    @State private var selectedTab = 2
+    @State private var selectedTab = 1
 
     @AppStorage("isDarkMode") private var isDarkMode = false
     @AppStorage("appLanguage") private var appLanguage = "en"
@@ -23,7 +23,6 @@ struct ContentView: View {
                 mainApp.transition(.opacity)
             }
         }
-        .id("\(isDarkMode)_\(appLanguage)")
         .onReceive(AuthManager.shared.$currentUser) { user in
             guard let user, appState.isOnboarded else { return }
             Task {
@@ -37,6 +36,8 @@ struct ContentView: View {
         .preferredColorScheme(isDarkMode ? .dark : .light)
         .environment(\.colorScheme, isDarkMode ? .dark : .light)
         .onAppear {
+            PaktAnalytics.track(.appOpened)
+            PaktAnalytics.sessionStart()
             applyInterfaceStyle(isDarkMode)
             appState.restoreLastSession()
             networkMonitor.start()
@@ -71,6 +72,7 @@ struct ContentView: View {
                 }
                 startPeriodicSync()
             } else if phase == .background {
+                PaktAnalytics.sessionEnd()
                 WebSocketManager.shared.disconnect()
                 syncTimer?.invalidate()
                 syncTimer = nil
@@ -94,58 +96,79 @@ struct ContentView: View {
     }
 
     var mainApp: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                // Offline banner
-                if !networkMonitor.isConnected {
-                    HStack(spacing: 6) {
-                        Image(systemName: "wifi.slash").font(.system(size: 13))
-                        Text(L10n.t("offline"))
-                            .font(.system(size: 14, weight: .medium))
+        VStack(spacing: 0) {
+            // Offline banner
+            if !networkMonitor.isConnected {
+                HStack(spacing: 6) {
+                    Image(systemName: "wifi.slash").font(.system(size: 13))
+                    Text(L10n.t("offline"))
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(Theme.red)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            SwiftUI.Group {
+                switch selectedTab {
+                case 0: NearYouView().environmentObject(appState)
+                case 2: ProfileView().environmentObject(appState)
+                default: GroupsListView(selectedTab: $selectedTab).environmentObject(appState)
+                }
+            }
+
+            // Tab bar — fixed at bottom
+            HStack(spacing: 0) {
+                tabItem("mappin.and.ellipse", label: "Explore", index: 0)
+                tabItem("person.2.fill", label: "Home", index: 1)
+
+                // Profile tab avec photo
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.easeInOut(duration: 0.2)) { selectedTab = 2 }
+                    PaktAnalytics.track(.tabSwitched, properties: ["tab": "Profile"])
+                }) {
+                    VStack(spacing: 4) {
+                        if let img = appState.profileUIImage {
+                            Image(uiImage: img)
+                                .resizable().scaledToFill()
+                                .frame(width: 30, height: 30)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(selectedTab == 2 ? Theme.text : Color.clear, lineWidth: 2))
+                                .scaleEffect(selectedTab == 2 ? 1.1 : 1.0)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: selectedTab == 2)
+                        } else {
+                            Circle()
+                                .fill(Theme.bgWarm)
+                                .frame(width: 30, height: 30)
+                                .overlay(
+                                    Text(String(appState.userName.prefix(1)).uppercased())
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundColor(Theme.textMuted)
+                                )
+                                .overlay(Circle().stroke(selectedTab == 2 ? Theme.text : Color.clear, lineWidth: 2))
+                                .scaleEffect(selectedTab == 2 ? 1.1 : 1.0)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: selectedTab == 2)
+                        }
+                        Text("Profile")
+                            .font(.system(size: 10, weight: selectedTab == 2 ? .semibold : .regular))
+                            .foregroundColor(selectedTab == 2 ? Theme.text : Theme.textFaint)
                     }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(Theme.red)
                 }
-
-                TabView(selection: $selectedTab) {
-                    ActivitiesView().environmentObject(appState)
-                        .tag(0)
-                    GroupsListView(selectedTab: $selectedTab).environmentObject(appState)
-                        .tag(1)
-                    TodayView().environmentObject(appState)
-                        .tag(2)
-                    NearYouView().environmentObject(appState)
-                        .tag(3)
-                    ProfileView().environmentObject(appState)
-                        .tag(4)
-                }
-                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                .animation(.easeInOut(duration: 0.25), value: selectedTab)
+                .frame(maxWidth: .infinity)
+                .accessibilityLabel("Profile")
             }
-
-            HStack {
-                Spacer()
-                tabIcon("bubble.left.and.bubble.right", index: 0)
-                Spacer()
-                tabIcon("person.2",    index: 1)
-                Spacer()
-                tabIcon("sun.max",     index: 2)
-                Spacer()
-                tabIcon("mappin.and.ellipse", index: 3)
-                Spacer()
-                tabIcon("person",      index: 4)
-                Spacer()
-            }
-            .padding(.vertical, 14).padding(.bottom, 20)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 20)
             .background(
-                Color.clear
-                    .background(.ultraThinMaterial)
-                    .ignoresSafeArea(edges: .bottom)
+                Rectangle()
+                    .fill(Theme.bg)
+                    .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: -4)
             )
         }
-        .ignoresSafeArea(edges: .bottom)
+        .animation(.easeInOut(duration: 0.3), value: networkMonitor.isConnected)
         .onPreferenceChange(TodayMinutesKey.self) { minutes in
             guard minutes > 0 else { return }
             let todayStr = ScreenTimeManager.dateFormatter.string(from: Date())
@@ -230,36 +253,26 @@ struct ContentView: View {
         }
     }
 
-    func tabIcon(_ icon: String, index: Int) -> some View {
-        let labels = ["Messages", "Groups", "Today", "Near you", "Profile"]
+    func tabItem(_ icon: String, label: String, index: Int) -> some View {
         let isSelected = selectedTab == index
-        return Button(action: { withAnimation(.easeInOut(duration: 0.2)) { selectedTab = index } }) {
-            VStack(spacing: 5) {
-                if index == 4 {
-                    // Profile tab — show user photo
-                    if let img = appState.profileUIImage {
-                        Image(uiImage: img)
-                            .resizable().scaledToFill()
-                            .frame(width: 26, height: 26)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(isSelected ? Theme.text : Color.clear, lineWidth: 1.5))
-                    } else {
-                        Image(systemName: icon)
-                            .font(.system(size: 22, weight: isSelected ? .semibold : .regular))
-                            .foregroundColor(isSelected ? Theme.text : Theme.textFaint)
-                    }
-                } else {
-                    Image(systemName: icon)
-                        .font(.system(size: 22, weight: isSelected ? .semibold : .regular))
-                        .foregroundColor(isSelected ? Theme.text : Theme.textFaint)
-                }
-                Circle()
-                    .fill(isSelected ? Theme.text : Color.clear)
-                    .frame(width: 5, height: 5)
+        return Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.easeInOut(duration: 0.2)) { selectedTab = index }
+            PaktAnalytics.track(.tabSwitched, properties: ["tab": label])
+        }) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(isSelected ? Theme.text : Theme.textFaint)
+                Text(label)
+                    .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(isSelected ? Theme.text : Theme.textFaint)
             }
+            .frame(maxWidth: .infinity)
         }
-        .accessibilityLabel(labels[index])
+        .accessibilityLabel(label)
     }
+    
 }
 
 // MARK: - Launch
@@ -269,14 +282,18 @@ struct LaunchView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.black
+                .ignoresSafeArea()
+
             Text("PAKT")
-                .font(.system(size: 76, weight: .bold, design: .default))
+                .font(.system(size: 84, weight: .black, design: .default))
                 .foregroundColor(.white)
                 .opacity(opacity)
-                .onAppear {
-                    withAnimation(.easeOut(duration: 0.7)) { opacity = 1.0 }
-                }
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.6)) {
+                opacity = 1.0
+            }
         }
     }
 }

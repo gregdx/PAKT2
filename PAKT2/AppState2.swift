@@ -366,15 +366,18 @@ class AppState: ObservableObject {
     }
 
     private func mergeRemoteGroups(_ remote: [Group]) {
-        // Si le backend retourne vide, vider les groupes locaux
+        // Preserve demo groups (local-only)
+        let demoGroups = groups.filter { $0.isDemo }
+
+        // Si le backend retourne vide, garder seulement les demos
         guard !remote.isEmpty else {
-            groups = []
+            groups = demoGroups
             saveGroupsLocal()
             return
         }
 
         // Le backend est la source de vérité pour tout (scope, trackedApps inclus)
-        groups = remote
+        groups = remote + demoGroups
         saveGroupsLocal()
     }
 
@@ -501,6 +504,46 @@ class AppState: ObservableObject {
         Task {
             try? await APIClient.shared.deleteGroup(group.id.uuidString)
         }
+    }
+
+    // MARK: - Demo Group
+
+    func insertDemoGroupIfNeeded() {
+        guard !groups.contains(where: { $0.code == "DEMO-0001" }) else { return }
+
+        let demoStartDate = Calendar.current.date(byAdding: .day, value: -6, to: Date())!
+
+        let demoMembers: [Member] = [
+            Member(uid: "demo_1", name: "Lucas", todayMinutes: 142, weekMinutes: 980, monthMinutes: 1420, todaySocialMinutes: 65, monthSocialMinutes: 580, history: generateDemoHistory(6, avg: 237)),
+            Member(uid: "demo_2", name: "Emma", todayMinutes: 98, weekMinutes: 720, monthMinutes: 1080, todaySocialMinutes: 42, monthSocialMinutes: 380, history: generateDemoHistory(6, avg: 180)),
+            Member(uid: "demo_3", name: "Hugo", todayMinutes: 215, weekMinutes: 1340, monthMinutes: 1890, todaySocialMinutes: 110, monthSocialMinutes: 820, history: generateDemoHistory(6, avg: 315)),
+            Member(uid: "demo_4", name: "Léa", todayMinutes: 78, weekMinutes: 580, monthMinutes: 890, todaySocialMinutes: 35, monthSocialMinutes: 290, history: generateDemoHistory(6, avg: 148)),
+            Member(uid: "demo_5", name: "Nathan", todayMinutes: 185, weekMinutes: 1180, monthMinutes: 1650, todaySocialMinutes: 95, monthSocialMinutes: 720, history: generateDemoHistory(6, avg: 275)),
+            Member(uid: "demo_6", name: "Chloé", todayMinutes: 120, weekMinutes: 840, monthMinutes: 1240, todaySocialMinutes: 55, monthSocialMinutes: 490, history: generateDemoHistory(6, avg: 207)),
+            Member(uid: "demo_7", name: "Maxime", todayMinutes: 260, weekMinutes: 1560, monthMinutes: 2100, todaySocialMinutes: 140, monthSocialMinutes: 950, history: generateDemoHistory(6, avg: 350)),
+            Member(uid: "demo_8", name: "Sarah", todayMinutes: 155, weekMinutes: 1050, monthMinutes: 1520, todaySocialMinutes: 78, monthSocialMinutes: 620, history: generateDemoHistory(6, avg: 253)),
+            Member(uid: "demo_9", name: "Antoine", todayMinutes: 195, weekMinutes: 1220, monthMinutes: 1780, todaySocialMinutes: 100, monthSocialMinutes: 780, history: generateDemoHistory(6, avg: 297)),
+            Member(uid: "demo_10", name: "Julie", todayMinutes: 110, weekMinutes: 790, monthMinutes: 1150, todaySocialMinutes: 48, monthSocialMinutes: 420, history: generateDemoHistory(6, avg: 192)),
+        ]
+
+        let demoGroup = Group(
+            name: "Squad Brussels",
+            code: "DEMO-0001",
+            mode: .competitive,
+            scope: .total,
+            goalMinutes: 180,
+            duration: .twoWeeks,
+            startDate: demoStartDate,
+            members: demoMembers,
+            isFinished: false,
+            creatorId: "demo_1",
+            isDemo: true,
+            stake: "Last pays dinner",
+            requiredPlayers: 10,
+            status: .active
+        )
+
+        groups.append(demoGroup)
     }
 
     // MARK: - Sign out

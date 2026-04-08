@@ -32,7 +32,7 @@ struct EditGroupView: View {
                     Spacer()
                     Image(systemName: "xmark").opacity(0).font(.system(size: 18))
                 }
-                .padding(.horizontal, 24).padding(.top, 60).padding(.bottom, 32)
+                .padding(.horizontal, 24).padding(.top, 56).padding(.bottom, 32)
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 32) {
@@ -58,7 +58,7 @@ struct EditGroupView: View {
                                     .font(.system(size: 26, weight: .bold)).foregroundColor(Theme.text)
                                 Rectangle().fill(Theme.border).frame(height: 1)
                             }
-                            .padding(.horizontal, 28)
+                            .padding(.horizontal, 24)
                         }
 
                         // MARK: - Members list
@@ -69,7 +69,7 @@ struct EditGroupView: View {
                             Text(L10n.t("challenge_settings"))
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(Theme.textFaint).tracking(1.6)
-                                .padding(.horizontal, 28)
+                                .padding(.horizontal, 24)
                             VStack(spacing: 0) {
                                 lockedRow(label: L10n.t("goal"),     value: "\(formatTime(group.goalMinutes)) / day")
                                 Rectangle().fill(Theme.separator).frame(height: 0.5).padding(.leading, 16)
@@ -78,13 +78,13 @@ struct EditGroupView: View {
                                 lockedRow(label: L10n.t("duration"), value: group.duration.displayName)
                             }
                             .liquidGlass(cornerRadius: 12)
-                            .padding(.horizontal, 28)
+                            .padding(.horizontal, 24)
                             HStack(spacing: 6) {
                                 Image(systemName: "lock").font(.system(size: 13)).foregroundColor(Theme.textFaint)
                                 Text(L10n.t("settings_locked"))
                                     .font(.system(size: 13)).foregroundColor(Theme.textFaint)
                             }
-                            .padding(.horizontal, 28)
+                            .padding(.horizontal, 24)
                         }
 
                         // Group code
@@ -92,7 +92,7 @@ struct EditGroupView: View {
                             Text(L10n.t("group_code_label"))
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(Theme.textFaint).tracking(1.6)
-                                .padding(.horizontal, 28)
+                                .padding(.horizontal, 24)
                             Button(action: {
                                 UIPasteboard.general.string = group.code
                                 withAnimation { codeCopied = true }
@@ -111,7 +111,7 @@ struct EditGroupView: View {
                                 .padding(.horizontal, 16).padding(.vertical, 14)
                                 .liquidGlass(cornerRadius: 12)
                             }
-                            .padding(.horizontal, 28)
+                            .padding(.horizontal, 24)
                         }
 
                         // Invite friends — only for pending groups
@@ -122,7 +122,7 @@ struct EditGroupView: View {
                                 Text(L10n.t("invite_friends"))
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundColor(Theme.textFaint).tracking(1.6)
-                                    .padding(.horizontal, 28)
+                                    .padding(.horizontal, 24)
                                 VStack(spacing: 0) {
                                     ForEach(Array(inviteable.enumerated()), id: \.element.id) { i, friend in
                                         HStack(spacing: 12) {
@@ -167,7 +167,7 @@ struct EditGroupView: View {
                                     }
                                 }
                                 .liquidGlass(cornerRadius: 12)
-                                .padding(.horizontal, 28)
+                                .padding(.horizontal, 24)
                             }
                         }
 
@@ -195,7 +195,7 @@ struct EditGroupView: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, 28)
+                        .padding(.horizontal, 24)
                     }
                     .padding(.bottom, 32)
                 }
@@ -204,7 +204,7 @@ struct EditGroupView: View {
 
                 if isCreator {
                     PrimaryButton(label: saved ? L10n.t("saved") + " ✓" : L10n.t("save_changes")) { saveChanges() }
-                        .padding(.horizontal, 28).padding(.bottom, 52)
+                        .padding(.horizontal, 24).padding(.bottom, 52)
                         .opacity(name.isEmpty ? 0.35 : 1).disabled(name.isEmpty)
                 }
             }
@@ -235,7 +235,7 @@ struct EditGroupView: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(Theme.textFaint)
             }
-            .padding(.horizontal, 28)
+            .padding(.horizontal, 24)
 
             VStack(spacing: 0) {
                 ForEach(Array(group.members.enumerated()), id: \.element.id) { i, member in
@@ -281,7 +281,7 @@ struct EditGroupView: View {
                 }
             }
             .liquidGlass(cornerRadius: 12)
-            .padding(.horizontal, 28)
+            .padding(.horizontal, 24)
         }
     }
 
