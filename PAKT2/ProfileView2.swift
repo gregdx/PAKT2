@@ -133,6 +133,14 @@ struct ProfileView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
 
+                    // "Les plus utilisés" — Opal-style visual list of top
+                    // apps. Uses the DAR extension for per-app breakdown
+                    // (the only iOS API that exposes it). Purely visual:
+                    // does NOT feed into the score, which stays 100% DAM.
+                    topAppsSection
+                        .padding(.top, 20)
+                        .padding(.horizontal, 24)
+
                     // 7-day chart — only reader data (App Group), no old sources
                     weekChart
                         .padding(.top, 16)
@@ -360,6 +368,30 @@ struct ProfileView: View {
                 .tracking(1.0)
         }
         .frame(height: 56)
+    }
+
+    // MARK: - Top apps ("Les plus utilisés", DAR display only, no score impact)
+
+    private var topAppsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Les plus utilisés")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Theme.textMuted)
+                Spacer()
+            }
+
+            PassthroughDAR {
+                DeviceActivityReport(.init(rawValue: "todayTotal"), filter: darTodayAppsFilter)
+                    .id(darRefreshId)
+            }
+            .frame(height: 132)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Theme.bgCard)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
     }
 
     // MARK: - Week chart
