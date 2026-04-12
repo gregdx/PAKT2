@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import FamilyControls
 import DeviceActivity
+import ManagedSettings
 import Security
 
 struct ProfileDayData: Identifiable {
