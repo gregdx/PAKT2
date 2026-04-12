@@ -64,7 +64,6 @@ struct SettingsView: View {
                     VStack(spacing: 28) {
                         profileCard
                         settingsGroup(title: L10n.t("daily_st_goal")) { goalSection }
-                        settingsGroup(title: "Apps suivies") { trackedAppsSection }
                         settingsGroup(title: L10n.t("preferences")) { preferencesSection }
                         settingsGroup(title: L10n.t("account")) { accountSection }
                         settingsGroup(title: L10n.t("support")) { supportSection }

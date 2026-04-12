@@ -135,29 +135,19 @@ struct ProfileView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
 
-                    // Per-app breakdown — DAM-sourced, only populated for
-                    // users who have picked specific apps to track. Shown
-                    // only when there is data to avoid an empty box.
-                    perAppDAMSection
+                    // "Les plus utilisées" — Opal-style per-app ranking.
+                    // Sourced from the DAR extension (the only iOS API that
+                    // exposes per-app breakdown without a picker). The DAR
+                    // is silent and does NOT feed into the score — which
+                    // stays 100% DAM-calibrated. Per-app DAM tracking runs
+                    // in parallel in the background (used by group defis
+                    // with scope="apps").
+                    topAppsSection
                         .padding(.top, 20)
                         .padding(.horizontal, 24)
-
-                    // Silent auto-detection: if the user hasn't picked any
-                    // tracked apps yet, render a tiny invisible DAR that
-                    // emits AutoPickedTokensKey. On preference change we
-                    // save the detected tokens and the Monitor takes over.
-                    // DAR is used ONLY for this one-shot detection; once
-                    // tokens are saved DAR plays no further role.
-                    if stManager.trackedAppsTokens.isEmpty && !autoPickAttempted {
-                        DeviceActivityReport(.init(rawValue: "todayTotal"), filter: darTodayAppsFilter)
-                            .frame(width: 1, height: 1)
-                            .opacity(0)
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                            .onPreferenceChange(AutoPickedTokensKey.self) { jsonString in
-                                handleAutoPicked(jsonString)
-                            }
-                    }
+                        .onPreferenceChange(AutoPickedTokensKey.self) { jsonString in
+                            handleAutoPicked(jsonString)
+                        }
 
                     // 7-day chart — only reader data (App Group), no old sources
                     weekChart
@@ -386,6 +376,30 @@ struct ProfileView: View {
                 .tracking(1.0)
         }
         .frame(height: 56)
+    }
+
+    // MARK: - Top apps ("Les plus utilisées", DAR display, Opal-style)
+
+    private var topAppsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Les plus utilisées")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Theme.textMuted)
+                Spacer()
+            }
+
+            PassthroughDAR {
+                DeviceActivityReport(.init(rawValue: "todayTotal"), filter: darTodayAppsFilter)
+                    .id(darRefreshId)
+            }
+            .frame(height: 132)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Theme.bgCard)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
     }
 
     // MARK: - Per-app breakdown (DAM-sourced, 100% consistent with today score)
