@@ -255,27 +255,27 @@ struct TodayReportView: View {
 
     var body: some View {
         // "TON POISON" — just the 3 most-used app icons, no numbers.
-        VStack(spacing: 14) {
-            HStack(spacing: 20) {
+        VStack(spacing: 10) {
+            HStack(spacing: 18) {
                 ForEach(info.apps.prefix(3)) { app in
                     if let token = app.token {
                         Label(token).labelStyle(.iconOnly)
-                            .frame(width: 56, height: 56)
+                            .frame(width: 44, height: 44)
                     } else {
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: 10)
                             .fill(Color.secondary.opacity(0.12))
-                            .frame(width: 56, height: 56)
+                            .frame(width: 44, height: 44)
                     }
                 }
             }
 
             Text("TON POISON")
-                .font(.system(size: 12, weight: .heavy))
+                .font(.system(size: 11, weight: .heavy))
                 .tracking(3)
                 .foregroundColor(Color.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
+        .padding(.vertical, 12)
         .preference(key: TodayMinutesKey.self, value: info.minutes)
     }
 }

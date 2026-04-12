@@ -379,12 +379,13 @@ struct ProfileView: View {
             DeviceActivityReport(.init(rawValue: "todayTotal"), filter: darTodayAppsFilter)
                 .id(darRefreshId)
         }
-        .frame(height: 140)
+        .frame(height: 108)
         .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Theme.bgCard)
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.4))
         )
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .liquidGlass(cornerRadius: 16, style: .ultraThin)
     }
 
     // MARK: - Per-app breakdown (DAM-sourced, kept for future group scope="apps")
