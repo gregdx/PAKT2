@@ -518,7 +518,6 @@ struct ProfileView: View {
                 .fill(Color.white.opacity(0.4))
         )
         .liquidGlass(cornerRadius: 16, style: .ultraThin)
-        .padding(.horizontal, 24)
         .padding(.top, 20)
         .scaleEffect(chartAppeared ? 1.0 : 0.9)
         .opacity(chartAppeared ? 1.0 : 0.0)

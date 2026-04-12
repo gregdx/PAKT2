@@ -24,16 +24,23 @@ struct EventDetailSheetRemote: View {
                     content
                 }
             }
-            .background(Theme.bg)
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Theme.text)
+                            .frame(width: 32, height: 32)
+                            .background(
+                                Circle().fill(.ultraThinMaterial)
+                            )
                     }
                 }
             }
+            .toolbarBackground(.hidden, for: .navigationBar)
             .task {
                 currentRSVP = row.myRsvp
                 detail = await store.fetchDetail(id: row.id)
@@ -44,6 +51,23 @@ struct EventDetailSheetRemote: View {
                     .environmentObject(AppState.shared)
             }
         }
+        // True liquid glass backdrop on the sheet itself. On iOS 26+ this
+        // uses the native .glassEffect material; on earlier iOS it falls
+        // back to .ultraThinMaterial which already has the blurred-glass
+        // look.
+        .presentationBackground {
+            ZStack {
+                if #available(iOS 26, *) {
+                    Rectangle()
+                        .fill(.clear)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 0))
+                } else {
+                    Rectangle().fill(.ultraThinMaterial)
+                }
+            }
+            .ignoresSafeArea()
+        }
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Hero image
