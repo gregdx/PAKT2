@@ -396,9 +396,9 @@ struct CreateEventSheetRemote: View {
                 endDate: hasEndDate ? endDate : nil,
                 location: location,
                 address: address,
-                imageUrl: imageUrl,
                 visibility: visibility.rawValue,
-                invitedUserIds: Array(invitedIDs)
+                invitedUserIds: Array(invitedIDs),
+                imageUrl: imageUrl
             )
             onCreated?(detail)
             dismiss()
