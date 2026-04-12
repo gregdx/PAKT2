@@ -142,9 +142,10 @@ struct UserEventsSectionView: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Theme.bgCard)
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.4))
         )
+        .liquidGlass(cornerRadius: 16, style: .ultraThin)
     }
 
     private func statusBadge(_ status: String) -> some View {
@@ -188,9 +189,10 @@ struct UserEventsSectionView: View {
         .padding(.vertical, 30)
         .padding(.horizontal, 24)
         .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Theme.bgCard)
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.4))
         )
+        .liquidGlass(cornerRadius: 16, style: .ultraThin)
         .padding(.horizontal, 24)
         .padding(.bottom, 8)
     }
