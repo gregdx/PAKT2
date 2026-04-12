@@ -629,7 +629,42 @@ struct SettingsView: View {
                 }
             )
 
+            rowDivider
+
+            // Screen time calibration — compensates for Apple's DAM overcount
+            calibrationRow
         }
+    }
+
+    @State private var calibrationPct: Double = ScreenTimeManager.calibrationFactor * 100
+
+    private var calibrationRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "slider.horizontal.3")
+                    .foregroundColor(Theme.green)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Calibration Screen Time")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Theme.text)
+                    Text("Corrige la surestimation d'Apple DAM")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.textFaint)
+                }
+                Spacer()
+                Text("\(Int(calibrationPct))%")
+                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .foregroundColor(Theme.green)
+            }
+            Slider(value: $calibrationPct, in: 30...100, step: 1)
+                .tint(Theme.green)
+                .onChange(of: calibrationPct) { _, newValue in
+                    ScreenTimeManager.setCalibrationFactor(newValue / 100)
+                    ScreenTimeManager.shared.loadProfileCache()
+                }
+        }
+        .padding(.vertical, 10)
     }
 
     // Language picker removed — English only for now

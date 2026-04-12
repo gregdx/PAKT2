@@ -43,6 +43,36 @@ final class ScreenTimeManager: ObservableObject {
     @Published var familySelection: FamilyActivitySelection = ScreenTimeManager.loadSelection()
     static let streakGoalMinutes = 180
 
+    // MARK: - Calibration factor
+    //
+    // Apple's DeviceActivityMonitor is known to overcount real usage by ~30%
+    // (FB15103784 + multiple iOS 17/18/26 threads). The bug has several causes:
+    // premature threshold fires, Safari double-counting, cross-device bleed
+    // even with "Share Across Devices" off, and time counted while the device
+    // is locked / on Home screen. Apps like Opal get closer to reality by
+    // filtering out passive time, but DAM exposes no such filter to us.
+    //
+    // As a pragmatic workaround, every raw minute read from App Group / Keychain
+    // is multiplied by this factor before being surfaced to the UI and the
+    // backend sync. The default 0.70 matches the 70-78% overcount we measured
+    // on Apr 10. Users can tune it in Settings if their particular phone
+    // is closer to Apple's native figure.
+    static let calibrationKey = "pakt_calibration_factor"
+    static var calibrationFactor: Double {
+        let raw = UserDefaults.standard.double(forKey: calibrationKey)
+        // clamp to [0.30, 1.00] so a typo can't zero out scores or inflate them
+        if raw <= 0 { return 0.70 }
+        return min(max(raw, 0.30), 1.00)
+    }
+    static func setCalibrationFactor(_ value: Double) {
+        let clamped = min(max(value, 0.30), 1.00)
+        UserDefaults.standard.set(clamped, forKey: calibrationKey)
+    }
+    private func calibrate(_ minutes: Int) -> Int {
+        guard minutes > 0 else { return 0 }
+        return Int((Double(minutes) * Self.calibrationFactor).rounded())
+    }
+
     // MARK: - FamilyActivitySelection persistence (for DeviceActivityMonitor thresholds)
 
     private static let selectionKey = "pakt_family_selection"
@@ -275,7 +305,8 @@ final class ScreenTimeManager: ObservableObject {
         // data source. This is how every Screen Time app works (Opal, UseLess,
         // ScreenZen). The overcount is an Apple bug (FB15103784), not ours.
         // ONLY read from App Group (written by the 12-block reader).
-        profileToday = agToday
+        // Apply the calibration factor to compensate for Apple's DAM overcount.
+        profileToday = calibrate(agToday)
         todaySource = agToday > 0 ? "reader" : "none"
 
         // Live interpolation: if the app is in foreground, the user IS using
@@ -300,6 +331,9 @@ final class ScreenTimeManager: ObservableObject {
                     if let fullEventTime = cal.date(from: comps) {
                         let elapsed = Int(now.timeIntervalSince(fullEventTime) / 60)
                         if elapsed > 0 && elapsed < 10 {
+                            // Interpolated minutes are real wall-clock time the
+                            // user has had the app open — no Apple overcount to
+                            // correct here. Add raw.
                             profileToday += elapsed
                         }
                     }
@@ -353,12 +387,12 @@ final class ScreenTimeManager: ObservableObject {
         if profileToday == 0 {
             let v = keychainInt("shared_today")
             let d = keychainRead("shared_today_date") ?? ""
-            if v > 0 && d == today { profileToday = v; todaySource = "keychain" }
+            if v > 0 && d == today { profileToday = calibrate(v); todaySource = "keychain" }
         }
         if categorySocial == 0 {
             let v = keychainInt("shared_social")
             let d = keychainRead("shared_social_date") ?? ""
-            if v > 0 && d == today { categorySocial = v; socialSource = "keychain" }
+            if v > 0 && d == today { categorySocial = calibrate(v); socialSource = "keychain" }
         }
         if profileWeekAvg == 0 {
             let v = keychainInt("shared_weekavg")

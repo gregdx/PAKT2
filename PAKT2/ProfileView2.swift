@@ -71,6 +71,17 @@ struct ProfileView: View {
         )
     }
 
+    /// DAR filter for today-only per-app breakdown. Hourly segment so the
+    /// TodayScene sees only today's apps (it sums across the segment range).
+    private var darTodayAppsFilter: DeviceActivityFilter {
+        let start = Calendar.current.startOfDay(for: Date())
+        let end = Date()
+        return DeviceActivityFilter(
+            segment: .hourly(during: DateInterval(start: start, end: max(end, start.addingTimeInterval(60)))),
+            devices: .init([.iPhone])
+        )
+    }
+
     /// DAR filter: 7 days for chart + today for apps. No app restriction.
     private var darProfileFilter: DeviceActivityFilter {
         let end = Date()
@@ -121,6 +132,13 @@ struct ProfileView: View {
                     todayScore
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
+
+                    // Top apps — Opal-style per-app breakdown. The DAR
+                    // extension has direct Screen Time API access and is
+                    // the only source with real per-app minutes on iOS.
+                    topAppsSection
+                        .padding(.top, 20)
+                        .padding(.horizontal, 24)
 
                     // 7-day chart — only reader data (App Group), no old sources
                     weekChart
@@ -349,6 +367,33 @@ struct ProfileView: View {
                 .tracking(1.0)
         }
         .frame(height: 56)
+    }
+
+    // MARK: - Top apps (DAR-sourced, exact per-app minutes)
+
+    private var topAppsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Top apps aujourd'hui")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Theme.textMuted)
+                Spacer()
+                Text("via Screen Time")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Theme.textFaint)
+            }
+
+            PassthroughDAR {
+                DeviceActivityReport(.init(rawValue: "todayTotal"), filter: darTodayAppsFilter)
+                    .id(darRefreshId)
+            }
+            .frame(height: 132)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Theme.card)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
     }
 
     // MARK: - Week chart
