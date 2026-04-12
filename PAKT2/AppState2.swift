@@ -553,10 +553,25 @@ class AppState: ObservableObject {
     }
 
     func deleteGroup(_ group: Group) {
+        let previous = group
         groups.removeAll { $0.id == group.id }
         saveGroupsLocal()
-        Task {
-            try? await APIClient.shared.deleteGroup(group.id.uuidString)
+        Task { [weak self] in
+            do {
+                try await APIClient.shared.deleteGroup(group.id.uuidString)
+            } catch {
+                // Server rejected — typically because the caller isn't the
+                // creator. Roll the group back into the local list so the
+                // UI stays consistent with the server state (otherwise the
+                // next refresh would re-insert it and feel like a ghost).
+                await MainActor.run {
+                    guard let self else { return }
+                    if !self.groups.contains(where: { $0.id == previous.id }) {
+                        self.groups.append(previous)
+                        self.saveGroupsLocal()
+                    }
+                }
+            }
         }
     }
 

@@ -356,14 +356,25 @@ struct GroupsListView: View {
             if !finishedGroups.isEmpty {
                 SectionTitle(text: L10n.t("finished_pakts"))
                 ForEach(finishedGroups) { group in
+                    let isCreator = !uid.isEmpty && group.creatorId == uid
                     Button(action: { selectedGroupId = group.id }) {
                         GroupCard(group: group, todayKey: todayKey)
                             .environmentObject(appState)
                     }
                     .buttonStyle(PlainButtonStyle())
                     .contextMenu {
-                        Button(role: .destructive) { appState.deleteGroup(group) } label: {
-                            Label(L10n.t("delete_pakt"), systemImage: "trash")
+                        // Non-creators can only leave. deleteGroup on the
+                        // server requires creator_id, so letting members
+                        // tap "Delete" caused the group to disappear
+                        // locally then re-appear on the next refresh.
+                        if isCreator {
+                            Button(role: .destructive) { appState.deleteGroup(group) } label: {
+                                Label(L10n.t("delete_pakt"), systemImage: "trash")
+                            }
+                        } else {
+                            Button(role: .destructive) { appState.leaveGroup(group) } label: {
+                                Label(L10n.t("leave_group"), systemImage: "rectangle.portrait.and.arrow.right")
+                            }
                         }
                     }
                 }
