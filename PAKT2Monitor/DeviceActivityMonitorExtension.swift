@@ -34,6 +34,7 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
                 // New day: reset this block
                 defaults?.set(0, forKey: blockKey)
                 defaults?.set(today, forKey: blockDateKey)
+                defaults?.removeObject(forKey: "\(blockKey)_last_fire_epoch")
             }
             // Don't reset shared_today here — it's the SUM of all blocks,
             // computed in eventDidReachThreshold.
@@ -143,13 +144,36 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             defaults?.set(appTotal, forKey: "app\(appIdx)_today")
             defaults?.set(today, forKey: "app\(appIdx)_today_date")
         } else {
-            // Total event: store per-block max
+            // Total event: store per-block max.
+            //
+            // Rate cap: Apple's DeviceActivityMonitor has a well-documented bug
+            // where thresholds can fire prematurely — e.g. "b3_45" firing
+            // after only 10 min of real usage in that block, producing a
+            // +35 min jump. We cap the per-block increment to the wall-clock
+            // time elapsed since the last fire in THIS block, plus a 1 min
+            // tolerance for Apple's internal aggregation. If no previous
+            // fire exists for today we accept the threshold value as-is.
             let blockKey = "block_\(blockNum)"
             let blockDateKey = "\(blockKey)_date"
+            let lastFireKey = "\(blockKey)_last_fire_epoch"
+
             let existingBlock = (defaults?.string(forKey: blockDateKey) == today) ? (defaults?.integer(forKey: blockKey) ?? 0) : 0
-            let blockMax = min(max(existingBlock, minutes), 120)
-            defaults?.set(blockMax, forKey: blockKey)
+            let nowEpoch = Date().timeIntervalSince1970
+            let lastFireEpoch = (defaults?.string(forKey: blockDateKey) == today) ? (defaults?.double(forKey: lastFireKey)) ?? 0 : 0
+
+            var capped = min(max(existingBlock, minutes), 120)
+            if existingBlock > 0, lastFireEpoch > 0, minutes > existingBlock {
+                let elapsedMinutes = Int(ceil((nowEpoch - lastFireEpoch) / 60.0)) + 1
+                let wallClockCap = existingBlock + max(elapsedMinutes, 0)
+                if capped > wallClockCap {
+                    defaults?.set("capped \(raw): wanted \(minutes), cap=\(wallClockCap), existing=\(existingBlock), elapsed=\(elapsedMinutes)m", forKey: "monitor_debug_last_cap")
+                    capped = min(wallClockCap, 120)
+                }
+            }
+
+            defaults?.set(capped, forKey: blockKey)
             defaults?.set(today, forKey: blockDateKey)
+            defaults?.set(nowEpoch, forKey: lastFireKey)
         }
 
         // === Sum all blocks for daily total ===

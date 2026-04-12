@@ -390,7 +390,7 @@ struct ProfileView: View {
             .frame(height: 132)
             .background(
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(Theme.card)
+                    .fill(Theme.bgCard)
             )
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
