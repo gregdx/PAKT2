@@ -46,6 +46,8 @@ struct SettingsView: View {
 
     @State private var appeared = false
     @State private var showFamilyPicker = false
+    @State private var showTrackedAppsPicker = false
+    @State private var trackedAppsDraft: FamilyActivitySelection = ScreenTimeManager.loadTrackedAppsSelection()
     @State private var debugLines: [String] = []
     @State private var runningDebug = false
 
@@ -58,6 +60,7 @@ struct SettingsView: View {
                     VStack(spacing: 28) {
                         profileCard
                         settingsGroup(title: L10n.t("daily_st_goal")) { goalSection }
+                        settingsGroup(title: "Apps suivies") { trackedAppsSection }
                         settingsGroup(title: L10n.t("preferences")) { preferencesSection }
                         settingsGroup(title: L10n.t("account")) { accountSection }
                         settingsGroup(title: L10n.t("support")) { supportSection }
@@ -274,6 +277,62 @@ struct SettingsView: View {
                         .padding(.vertical, 14)
                         .liquidGlass(cornerRadius: 12)
                 }
+            }
+        }
+    }
+
+    // MARK: - Tracked apps (per-app DAM tracking, Opal-style "top apps" source)
+
+    var trackedAppsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "square.grid.2x2")
+                    .foregroundColor(Theme.green)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Apps à suivre en détail")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Theme.text)
+                    Text("\(stManager.trackedAppsTokens.count)/\(ScreenTimeManager.MAX_TRACKED_APPS) apps sélectionnées")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.textFaint)
+                }
+                Spacer()
+                Button {
+                    trackedAppsDraft = stManager.trackedAppsSelection
+                    showTrackedAppsPicker = true
+                } label: {
+                    Text("Choisir")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(Theme.green)
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.vertical, 4)
+
+            if !stManager.trackedAppsTokens.isEmpty {
+                VStack(spacing: 6) {
+                    ForEach(Array(stManager.trackedAppsTokens.enumerated()), id: \.offset) { _, token in
+                        HStack(spacing: 10) {
+                            Label(token).labelStyle(.iconOnly).frame(width: 24, height: 24)
+                            Label(token).labelStyle(.titleOnly)
+                                .font(.system(size: 13))
+                                .foregroundColor(Theme.textMuted)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 8)
+                    }
+                }
+            }
+        }
+        .familyActivityPicker(isPresented: $showTrackedAppsPicker, selection: $trackedAppsDraft)
+        .onChange(of: showTrackedAppsPicker) { _, isPresented in
+            if !isPresented {
+                stManager.saveTrackedAppsSelection(trackedAppsDraft)
             }
         }
     }

@@ -133,11 +133,10 @@ struct ProfileView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
 
-                    // "Les plus utilisés" — Opal-style visual list of top
-                    // apps. Uses the DAR extension for per-app breakdown
-                    // (the only iOS API that exposes it). Purely visual:
-                    // does NOT feed into the score, which stays 100% DAM.
-                    topAppsSection
+                    // Per-app breakdown — DAM-sourced, only populated for
+                    // users who have picked specific apps to track. Shown
+                    // only when there is data to avoid an empty box.
+                    perAppDAMSection
                         .padding(.top, 20)
                         .padding(.horizontal, 24)
 
@@ -370,28 +369,46 @@ struct ProfileView: View {
         .frame(height: 56)
     }
 
-    // MARK: - Top apps ("Les plus utilisés", DAR display only, no score impact)
+    // MARK: - Per-app breakdown (DAM-sourced, 100% consistent with today score)
 
-    private var topAppsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Les plus utilisés")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Theme.textMuted)
-                Spacer()
-            }
+    @ViewBuilder
+    private var perAppDAMSection: some View {
+        let entries = stManager.perAppBreakdown
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Apps trackées")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Theme.textMuted)
+                    Spacer()
+                }
 
-            PassthroughDAR {
-                DeviceActivityReport(.init(rawValue: "todayTotal"), filter: darTodayAppsFilter)
-                    .id(darRefreshId)
+                VStack(spacing: 8) {
+                    ForEach(entries, id: \.name) { entry in
+                        HStack(spacing: 12) {
+                            Text(entry.name)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Theme.text)
+                            Spacer(minLength: 8)
+                            Text(formatMinutes(entry.minutes))
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundColor(Theme.textMuted)
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Theme.bgCard)
+                        )
+                    }
+                }
             }
-            .frame(height: 132)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Theme.bgCard)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
+    }
+
+    private func formatMinutes(_ m: Int) -> String {
+        if m < 60 { return "\(m) min" }
+        return "\(m / 60)h \(m % 60)min"
     }
 
     // MARK: - Week chart

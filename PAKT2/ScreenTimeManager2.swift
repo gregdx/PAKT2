@@ -41,7 +41,90 @@ final class ScreenTimeManager: ObservableObject {
     @Published var darDebugInfo: String = "never"
     @Published var todaySourceInfo: String = "none"
     @Published var familySelection: FamilyActivitySelection = ScreenTimeManager.loadSelection()
+
+    // MARK: - Per-app tracking (for scope="apps" groups + Profile breakdown)
+    //
+    // The user can additionally pick up to MAX_TRACKED_APPS individual apps
+    // (Instagram, TikTok, etc.). The Monitor schedules a dedicated
+    // DeviceActivityEvent per picked app so DAM fires per-app thresholds
+    // and writes minutes into `app{i}_today` in App Group.
+    @Published var trackedAppsSelection: FamilyActivitySelection = ScreenTimeManager.loadTrackedAppsSelection()
+
+    /// Ordered snapshot of the tokens from trackedAppsSelection. The index in
+    /// this array maps 1-to-1 with the `app{i}_today` keys written by the
+    /// Monitor extension. Persisted so host + extension agree on index.
+    @Published private(set) var trackedAppsTokens: [ApplicationToken] = ScreenTimeManager.loadTrackedAppsTokens()
+
+    struct PerAppEntry: Identifiable {
+        let index: Int
+        let token: ApplicationToken
+        let minutes: Int
+        var id: Int { index }
+    }
+
+    /// Calibrated per-app minutes for today, sorted desc, zeros filtered out.
+    @Published var perAppBreakdown: [PerAppEntry] = []
+
+    static let MAX_TRACKED_APPS = 10
     static let streakGoalMinutes = 180
+
+    private static let trackedAppsKey = "pakt_tracked_apps_selection"
+    private static let trackedAppsTokensKey = "pakt_tracked_apps_tokens"
+
+    static func loadTrackedAppsSelection() -> FamilyActivitySelection {
+        guard let data = UserDefaults.standard.data(forKey: trackedAppsKey),
+              let decoded = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else {
+            return FamilyActivitySelection()
+        }
+        return decoded
+    }
+
+    static func loadTrackedAppsTokens() -> [ApplicationToken] {
+        guard let data = UserDefaults.standard.data(forKey: trackedAppsTokensKey),
+              let decoded = try? JSONDecoder().decode([ApplicationToken].self, from: data) else {
+            return []
+        }
+        return decoded
+    }
+
+    /// Save a new per-app selection. Caps at MAX_TRACKED_APPS to stay within
+    /// DAM's 20-events-per-schedule budget. Clears stale per-app counters and
+    /// restarts background monitoring so the Monitor picks up the new list.
+    func saveTrackedAppsSelection(_ selection: FamilyActivitySelection) {
+        let tokens = Array(selection.applicationTokens.prefix(Self.MAX_TRACKED_APPS))
+        let trimmed = FamilyActivitySelection()
+        var trimmedMut = trimmed
+        trimmedMut.applicationTokens = Set(tokens)
+
+        trackedAppsSelection = trimmedMut
+        trackedAppsTokens = tokens
+
+        if let sdata = try? JSONEncoder().encode(trimmedMut) {
+            UserDefaults.standard.set(sdata, forKey: Self.trackedAppsKey)
+            sharedUD?.set(sdata, forKey: Self.trackedAppsKey)
+        }
+        if let tdata = try? JSONEncoder().encode(tokens) {
+            UserDefaults.standard.set(tdata, forKey: Self.trackedAppsTokensKey)
+            sharedUD?.set(tdata, forKey: Self.trackedAppsTokensKey)
+        }
+        sharedUD?.set(tokens.count, forKey: "tracked_app_count")
+
+        // Wipe per-app counters so the new selection starts fresh.
+        for i in 0..<Self.MAX_TRACKED_APPS {
+            sharedUD?.removeObject(forKey: "app\(i)_today")
+            sharedUD?.removeObject(forKey: "app\(i)_today_date")
+            for b in 0..<12 {
+                sharedUD?.removeObject(forKey: "app\(i)_block_\(b)")
+                sharedUD?.removeObject(forKey: "app\(i)_block_\(b)_date")
+            }
+        }
+        sharedUD?.synchronize()
+
+        perAppBreakdown = []
+        Log.d("[ScreenTime] Saved tracked apps selection: \(tokens.count) apps")
+        startBackgroundMonitoring(force: true)
+    }
+
 
     // MARK: - Calibration factor
     //
@@ -353,15 +436,23 @@ final class ScreenTimeManager: ObservableObject {
         // === Per-app daily totals from the 12-block reader ===
         let trackedCount = sharedUD?.integer(forKey: "tracked_app_count") ?? 0
         var appTotals: [(index: Int, minutes: Int)] = []
-        for i in 0..<min(trackedCount, 3) {
+        var breakdown: [PerAppEntry] = []
+        let tokens = trackedAppsTokens
+        for i in 0..<trackedCount {
             let key = "app\(i)_today"
             let dateKey = "\(key)_date"
             let d = sharedUD?.string(forKey: dateKey) ?? ""
-            let m = (d == today) ? (sharedUD?.integer(forKey: key) ?? 0) : 0
+            let rawM = (d == today) ? (sharedUD?.integer(forKey: key) ?? 0) : 0
+            let m = calibrate(rawM)
             if m > 0 { appTotals.append((i, m)) }
+            if m > 0, i < tokens.count {
+                breakdown.append(PerAppEntry(index: i, token: tokens[i], minutes: m))
+            }
         }
         appTotals.sort { $0.minutes > $1.minutes }
+        breakdown.sort { $0.minutes > $1.minutes }
         perAppMinutes = appTotals
+        perAppBreakdown = breakdown
 
         profileWeekAvg = UserDefaults.standard.integer(forKey: UDKey.weekAvg)
         profileMonthAvg = UserDefaults.standard.integer(forKey: UDKey.monthAvg)
@@ -603,6 +694,7 @@ final class ScreenTimeManager: ObservableObject {
             .init("dst_coarse"), .init("pakt_daily_v2"),
         ]
         for i in 0..<12 { legacyNames.append(.init("pakt_block_\(i)")) }
+        for i in 0..<Self.MAX_TRACKED_APPS { legacyNames.append(.init("pakt_app_\(i)")) }
         center.stopMonitoring(legacyNames)
 
         // === OPAL-STYLE: 12 × 2h blocks, each with 23 events at 5-min intervals ===
@@ -650,8 +742,42 @@ final class ScreenTimeManager: ObservableObject {
                 Log.d("[PAKT Monitor] Failed to start block \(block): \(error)")
             }
         }
+        // === Per-app tracking ===
+        // For each tracked app, schedule a standalone daily activity with
+        // dedicated thresholds. These run 00:00–23:59:59 and reset with
+        // repeats:true so per-app counters start at 0 each day.
+        let appThresholds = [5, 15, 30, 45, 60, 90, 120, 180, 240, 300]
+        let appSchedule = DeviceActivitySchedule(
+            intervalStart: DateComponents(hour: 0, minute: 0),
+            intervalEnd: DateComponents(hour: 23, minute: 59, second: 59),
+            repeats: true
+        )
+
+        var perAppEvents = 0
+        for (idx, token) in trackedAppsTokens.enumerated() where idx < Self.MAX_TRACKED_APPS {
+            var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
+            for mins in appThresholds {
+                let name = DeviceActivityEvent.Name("app\(idx)_\(mins)")
+                events[name] = DeviceActivityEvent(
+                    applications: [token],
+                    threshold: DateComponents(minute: mins),
+                    includesPastActivity: false
+                )
+            }
+            do {
+                try center.startMonitoring(
+                    .init("pakt_app_\(idx)"),
+                    during: appSchedule,
+                    events: events
+                )
+                perAppEvents += events.count
+            } catch {
+                Log.d("[PAKT Monitor] Failed to start per-app \(idx): \(error)")
+            }
+        }
+
         lastBackgroundMonitoringStart = Date()
-        Log.d("[PAKT Monitor] Started 12 blocks with \(totalEvents) total events (±1-3 min precision, all apps, no filter)")
+        Log.d("[PAKT Monitor] Started 12 blocks with \(totalEvents) total events + \(trackedAppsTokens.count) apps with \(perAppEvents) per-app events")
     }
 
     // MARK: - Lire les données (écrites par onOpenURL dans PAKTApp)

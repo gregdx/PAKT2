@@ -89,9 +89,35 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
         super.eventDidReachThreshold(event, activity: activity)
 
+        let raw = event.rawValue
+        let now = Self.timeFmt.string(from: Date())
+        defaults?.set("\(raw) @ \(now)", forKey: "monitor_debug_last_event")
+        let today = todayDateString
+
+        // === Per-app daily event (app{idx}_{mins}) ===
+        // Dedicated per-app schedule: writes directly to app{idx}_today.
+        // No per-block bookkeeping — the schedule runs all day and resets daily.
+        if raw.hasPrefix("app"), let underscoreIdx = raw.firstIndex(of: "_") {
+            let idxPart = String(raw[raw.index(raw.startIndex, offsetBy: 3)..<underscoreIdx])
+            let minsPart = String(raw[raw.index(after: underscoreIdx)...])
+            guard let idx = Int(idxPart), let mins = Int(minsPart), mins > 0 else { return }
+
+            let key = "app\(idx)_today"
+            let dateKey = "\(key)_date"
+            let existing = (defaults?.string(forKey: dateKey) == today) ? (defaults?.integer(forKey: key) ?? 0) : 0
+            let newValue = min(max(existing, mins), 1440)
+            defaults?.set(newValue, forKey: key)
+            defaults?.set(today, forKey: dateKey)
+            defaults?.synchronize()
+
+            // Wake the main app so it can refresh perAppBreakdown.
+            let center = CFNotificationCenterGetDarwinNotifyCenter()
+            CFNotificationCenterPostNotification(center, CFNotificationName("com.PAKT2.screenTimeUpdate" as CFString), nil, nil, true)
+            return
+        }
+
         // Parse event name "b{block}_{minutes}" (new format)
         // or legacy "threshold_{minutes}" (backward compat)
-        let raw = event.rawValue
         var minutes = 0
 
         if raw.hasPrefix("b") {
@@ -106,11 +132,6 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         } else {
             return
         }
-
-        let now = Self.timeFmt.string(from: Date())
-        defaults?.set("\(raw) @ \(now)", forKey: "monitor_debug_last_event")
-
-        let today = todayDateString
 
         // === Parse event name ===
         // Format: "b{block}_{mins}" for total, "b{block}_a{app}_{mins}" for per-app
