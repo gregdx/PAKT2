@@ -384,13 +384,16 @@ struct ProfileView: View {
                 }
 
                 VStack(spacing: 8) {
-                    ForEach(entries, id: \.name) { entry in
+                    ForEach(entries) { entry in
                         HStack(spacing: 12) {
-                            Text(entry.name)
+                            Label(entry.token).labelStyle(.iconOnly)
+                                .frame(width: 28, height: 28)
+                            Label(entry.token).labelStyle(.titleOnly)
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(Theme.text)
+                                .lineLimit(1)
                             Spacer(minLength: 8)
-                            Text(formatMinutes(entry.minutes))
+                            Text(formatAppMinutes(entry.minutes))
                                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
                                 .foregroundColor(Theme.textMuted)
                         }
@@ -406,7 +409,7 @@ struct ProfileView: View {
         }
     }
 
-    private func formatMinutes(_ m: Int) -> String {
+    private func formatAppMinutes(_ m: Int) -> String {
         if m < 60 { return "\(m) min" }
         return "\(m / 60)h \(m % 60)min"
     }
