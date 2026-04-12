@@ -252,56 +252,32 @@ struct TodayScene: DeviceActivityReportScene {
 
 struct TodayReportView: View {
     let info: TodayInfo
-    var over: Bool { info.minutes > info.goal }
 
     var body: some View {
-        // DAR shows ONLY per-app breakdown (top 5 with icons + bars).
-        // Big number + chart come from the host-side Opal-style reader.
-        VStack(spacing: 3) {
-            if !info.apps.isEmpty {
-                ForEach(info.apps) { app in
-                    HStack(spacing: 10) {
-                        if let token = app.token {
-                            Label(token).labelStyle(.iconOnly).frame(width: 28, height: 28)
-                        } else {
-                            RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.1)).frame(width: 28, height: 28)
-                                .overlay(Text(String(app.name.prefix(1))).font(.system(size: 12, weight: .bold)).foregroundColor(Color.secondary))
-                        }
-                        Text(app.name).font(.system(size: 14, weight: .medium)).foregroundColor(Color.primary).lineLimit(1)
-                        Spacer(minLength: 4)
-                        GeometryReader { geo in
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(app.minutes > info.goal / 3 ? red.opacity(0.4) : green.opacity(0.4))
-                                .frame(width: max(4, geo.size.width * CGFloat(app.minutes) / CGFloat(max(info.apps.first?.minutes ?? 1, 1))))
-                        }.frame(width: 60, height: 12)
-                        Text(formatST(app.minutes)).font(.system(size: 12, weight: .semibold)).foregroundColor(Color.secondary).frame(width: 48, alignment: .trailing)
+        // "TON POISON" — just the 3 most-used app icons, no numbers.
+        VStack(spacing: 14) {
+            HStack(spacing: 20) {
+                ForEach(info.apps.prefix(3)) { app in
+                    if let token = app.token {
+                        Label(token).labelStyle(.iconOnly)
+                            .frame(width: 56, height: 56)
+                    } else {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.secondary.opacity(0.12))
+                            .frame(width: 56, height: 56)
                     }
-                    .padding(.vertical, 5).padding(.horizontal, 10)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(UIColor.secondarySystemBackground)))
                 }
-            } else {
-                Text("Collecting app data...")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color.secondary.opacity(0.4))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
             }
+
+            Text("TON POISON")
+                .font(.system(size: 12, weight: .heavy))
+                .tracking(3)
+                .foregroundColor(Color.secondary)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
         .preference(key: TodayMinutesKey.self, value: info.minutes)
-        .preference(key: AutoPickedTokensKey.self, value: serializedTopTokens)
     }
-
-    /// JSON-encoded [ApplicationToken] for the top 10 apps. Bubbled up via
-    /// AutoPickedTokensKey so the host auto-selects them for DAM per-app
-    /// tracking — matches ScreenTimeManager.MAX_TRACKED_APPS.
-    private var serializedTopTokens: String {
-        let tokens = info.apps.prefix(10).compactMap { $0.token }
-        guard !tokens.isEmpty, let data = try? JSONEncoder().encode(Array(tokens)) else {
-            return ""
-        }
-        return String(data: data, encoding: .utf8) ?? ""
-    }
-
 }
 
 // MARK: - Scene 2 : Compact (pour les groupes)

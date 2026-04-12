@@ -135,28 +135,13 @@ struct ProfileView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
 
-                    // "Les plus utilisées" — DAM-sourced ranking. Always
-                    // shown; renders zeros as placeholders while Monitor
-                    // events haven't fired yet (typically J1 after
-                    // auto-detection).
-                    perAppDAMSection
+                    // "Ton poison" — DAR renders just the 3 most-used app
+                    // icons. No numbers, no ranking info. Doesn't feed into
+                    // the score; the DAM total + calibration remains the
+                    // authoritative figure on this profile.
+                    poisonSection
                         .padding(.top, 20)
                         .padding(.horizontal, 24)
-
-                    // Invisible 1x1 DAR — only role is to bubble up the
-                    // user's top-10 app tokens so the Monitor can schedule
-                    // per-app events. Not visible anywhere, fires once per
-                    // session when no tokens have been saved yet.
-                    if stManager.trackedAppsTokens.isEmpty && !autoPickAttempted {
-                        DeviceActivityReport(.init(rawValue: "todayTotal"), filter: darTodayAppsFilter)
-                            .frame(width: 1, height: 1)
-                            .opacity(0)
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                            .onPreferenceChange(AutoPickedTokensKey.self) { jsonString in
-                                handleAutoPicked(jsonString)
-                            }
-                    }
 
                     // 7-day chart — only reader data (App Group), no old sources
                     weekChart
@@ -387,7 +372,22 @@ struct ProfileView: View {
         .frame(height: 56)
     }
 
-    // MARK: - Per-app breakdown (DAM-sourced, 100% consistent with today score)
+    // MARK: - Ton poison (DAR-sourced, icons only — no info bleeding in)
+
+    private var poisonSection: some View {
+        PassthroughDAR {
+            DeviceActivityReport(.init(rawValue: "todayTotal"), filter: darTodayAppsFilter)
+                .id(darRefreshId)
+        }
+        .frame(height: 140)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Theme.bgCard)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+    }
+
+    // MARK: - Per-app breakdown (DAM-sourced, kept for future group scope="apps")
 
     @ViewBuilder
     private var perAppDAMSection: some View {
