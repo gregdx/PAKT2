@@ -317,31 +317,6 @@ struct SettingsView: View {
             }
             .padding(.vertical, 4)
 
-            Button {
-                autoDetectStatus = ""
-                showAutoDetect = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "sparkles")
-                    Text("Détecter automatiquement mes 3 apps les plus utilisées")
-                        .font(.system(size: 13, weight: .medium))
-                        .multilineTextAlignment(.leading)
-                }
-                .foregroundColor(Theme.green)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Theme.green.opacity(0.5), lineWidth: 1)
-                )
-            }
-            if !autoDetectStatus.isEmpty {
-                Text(autoDetectStatus)
-                    .font(.system(size: 11))
-                    .foregroundColor(Theme.green)
-                    .padding(.horizontal, 8)
-            }
 
             if !stManager.trackedAppsTokens.isEmpty {
                 VStack(spacing: 6) {
@@ -365,63 +340,6 @@ struct SettingsView: View {
                 stManager.saveTrackedAppsSelection(trackedAppsDraft)
             }
         }
-        .sheet(isPresented: $showAutoDetect) {
-            autoDetectSheet
-        }
-    }
-
-    /// Sheet that uses the DAR extension briefly to detect the user's top 3
-    /// apps, then saves them as tracked apps and dismisses. DAR is used ONLY
-    /// for detection — scoring stays 100% DAM.
-    @ViewBuilder
-    private var autoDetectSheet: some View {
-        VStack(spacing: 16) {
-            Capsule().fill(Theme.textFaint).frame(width: 40, height: 4).padding(.top, 8)
-            Text("Détection de tes top 3 apps")
-                .font(.system(size: 18, weight: .semibold))
-            Text("On lit ton Screen Time Apple pour récupérer les 3 apps sur lesquelles tu passes le plus de temps, puis on les active pour le suivi détaillé.")
-                .font(.system(size: 13))
-                .foregroundColor(Theme.textMuted)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
-
-            // The DAR is rendered here so its TodayReportView bubbles up
-            // AutoPickedTokensKey. We keep it visible but small as a loading
-            // indicator — typical DAR render time is 1-3s.
-            DeviceActivityReport(.init(rawValue: "todayTotal"), filter: autoDetectFilter)
-                .frame(height: 160)
-                .padding(.horizontal, 20)
-                .onPreferenceChange(AutoPickedTokensKey.self) { jsonString in
-                    guard !jsonString.isEmpty,
-                          let data = jsonString.data(using: .utf8),
-                          let tokens = try? JSONDecoder().decode([ApplicationToken].self, from: data),
-                          !tokens.isEmpty else {
-                        return
-                    }
-                    var selection = FamilyActivitySelection()
-                    selection.applicationTokens = Set(tokens)
-                    stManager.saveTrackedAppsSelection(selection)
-                    autoDetectStatus = "✓ \(tokens.count) apps détectées et activées"
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        showAutoDetect = false
-                    }
-                }
-
-            Spacer()
-            Button("Annuler") { showAutoDetect = false }
-                .foregroundColor(Theme.textMuted)
-                .padding(.bottom, 20)
-        }
-        .presentationDetents([.medium])
-    }
-
-    private var autoDetectFilter: DeviceActivityFilter {
-        let start = Calendar.current.startOfDay(for: Date())
-        let end = Date()
-        return DeviceActivityFilter(
-            segment: .hourly(during: DateInterval(start: start, end: max(end, start.addingTimeInterval(60)))),
-            devices: .init([.iPhone])
-        )
     }
 
     // MARK: - Apps Tracked (FamilyActivitySelection)

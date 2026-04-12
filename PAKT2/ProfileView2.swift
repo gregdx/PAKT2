@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 import DeviceActivity
 import FamilyControls
+import ManagedSettings
 
 // MARK: - ProfileView
 
@@ -26,6 +27,7 @@ struct ProfileView: View {
     @State private var showGroupDetail = false
     @State private var showAppPicker = false
     @State private var showReaderInfo = false
+    @State private var autoPickAttempted = false
 
     private var hasAppSelection: Bool {
         !stManager.familySelection.applicationTokens.isEmpty ||
@@ -139,6 +141,23 @@ struct ProfileView: View {
                     perAppDAMSection
                         .padding(.top, 20)
                         .padding(.horizontal, 24)
+
+                    // Silent auto-detection: if the user hasn't picked any
+                    // tracked apps yet, render a tiny invisible DAR that
+                    // emits AutoPickedTokensKey. On preference change we
+                    // save the detected tokens and the Monitor takes over.
+                    // DAR is used ONLY for this one-shot detection; once
+                    // tokens are saved DAR plays no further role.
+                    if stManager.trackedAppsTokens.isEmpty && !autoPickAttempted {
+                        DeviceActivityReport(.init(rawValue: "todayTotal"), filter: darTodayAppsFilter)
+                            .frame(width: 1, height: 1)
+                            .opacity(0)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                            .onPreferenceChange(AutoPickedTokensKey.self) { jsonString in
+                                handleAutoPicked(jsonString)
+                            }
+                    }
 
                     // 7-day chart — only reader data (App Group), no old sources
                     weekChart
@@ -417,6 +436,21 @@ struct ProfileView: View {
     private func formatAppMinutes(_ m: Int) -> String {
         if m < 60 { return "\(m) min" }
         return "\(m / 60)h \(m % 60)min"
+    }
+
+    private func handleAutoPicked(_ jsonString: String) {
+        guard !autoPickAttempted, !jsonString.isEmpty,
+              stManager.trackedAppsTokens.isEmpty,
+              let data = jsonString.data(using: .utf8),
+              let tokens = try? JSONDecoder().decode([ApplicationToken].self, from: data),
+              !tokens.isEmpty else {
+            return
+        }
+        autoPickAttempted = true
+        var selection = FamilyActivitySelection()
+        selection.applicationTokens = Set(tokens)
+        stManager.saveTrackedAppsSelection(selection)
+        Log.d("[Profile] Auto-picked \(tokens.count) tracked apps from DAR")
     }
 
     // MARK: - Week chart
