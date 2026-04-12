@@ -227,8 +227,10 @@ struct TodayScene: DeviceActivityReportScene {
             }
         }
 
+        // Keep the top 10 apps — matches MAX_TRACKED_APPS on the host so the
+        // full list can be auto-picked for DAM per-app tracking in one shot.
         let apps = appMap.sorted { $0.value.minutes > $1.value.minutes }
-            .prefix(3)
+            .prefix(10)
             .map { AppUsageRow(name: $0.key, minutes: $0.value.minutes, token: $0.value.token) }
 
         var days: [DayData] = []
@@ -289,11 +291,11 @@ struct TodayReportView: View {
         .preference(key: AutoPickedTokensKey.self, value: serializedTopTokens)
     }
 
-    /// JSON-encoded [ApplicationToken] for the top 3 apps today. Bubbled up
-    /// via AutoPickedTokensKey so the host can auto-select them for DAM
-    /// tracking without a manual picker step.
+    /// JSON-encoded [ApplicationToken] for the top 10 apps. Bubbled up via
+    /// AutoPickedTokensKey so the host auto-selects them for DAM per-app
+    /// tracking — matches ScreenTimeManager.MAX_TRACKED_APPS.
     private var serializedTopTokens: String {
-        let tokens = info.apps.prefix(3).compactMap { $0.token }
+        let tokens = info.apps.prefix(10).compactMap { $0.token }
         guard !tokens.isEmpty, let data = try? JSONEncoder().encode(Array(tokens)) else {
             return ""
         }
