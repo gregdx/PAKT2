@@ -135,19 +135,28 @@ struct ProfileView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
 
-                    // "Les plus utilisées" — Opal-style per-app ranking.
-                    // Sourced from the DAR extension (the only iOS API that
-                    // exposes per-app breakdown without a picker). The DAR
-                    // is silent and does NOT feed into the score — which
-                    // stays 100% DAM-calibrated. Per-app DAM tracking runs
-                    // in parallel in the background (used by group defis
-                    // with scope="apps").
-                    topAppsSection
+                    // "Les plus utilisées" — DAM-sourced ranking. Always
+                    // shown; renders zeros as placeholders while Monitor
+                    // events haven't fired yet (typically J1 after
+                    // auto-detection).
+                    perAppDAMSection
                         .padding(.top, 20)
                         .padding(.horizontal, 24)
-                        .onPreferenceChange(AutoPickedTokensKey.self) { jsonString in
-                            handleAutoPicked(jsonString)
-                        }
+
+                    // Invisible 1x1 DAR — only role is to bubble up the
+                    // user's top-10 app tokens so the Monitor can schedule
+                    // per-app events. Not visible anywhere, fires once per
+                    // session when no tokens have been saved yet.
+                    if stManager.trackedAppsTokens.isEmpty && !autoPickAttempted {
+                        DeviceActivityReport(.init(rawValue: "todayTotal"), filter: darTodayAppsFilter)
+                            .frame(width: 1, height: 1)
+                            .opacity(0)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                            .onPreferenceChange(AutoPickedTokensKey.self) { jsonString in
+                                handleAutoPicked(jsonString)
+                            }
+                    }
 
                     // 7-day chart — only reader data (App Group), no old sources
                     weekChart
@@ -378,9 +387,29 @@ struct ProfileView: View {
         .frame(height: 56)
     }
 
-    // MARK: - Top apps ("Les plus utilisées", DAR display, Opal-style)
+    // MARK: - Per-app breakdown (DAM-sourced, 100% consistent with today score)
 
-    private var topAppsSection: some View {
+    @ViewBuilder
+    private var perAppDAMSection: some View {
+        let liveEntries = stManager.perAppBreakdown
+        // Build display list: one row per tracked token, merged with live
+        // minutes when the Monitor has fired. If nothing is tracked yet,
+        // fall back to 3 zero-value placeholder rows so the section isn't
+        // empty while auto-detection is pending.
+        let rows: [AppRowDisplay] = {
+            let tokens = stManager.trackedAppsTokens
+            if tokens.isEmpty {
+                return (0..<3).map { AppRowDisplay(index: $0, token: nil, minutes: 0) }
+            }
+            let liveByIndex = Dictionary(uniqueKeysWithValues: liveEntries.map { ($0.index, $0.minutes) })
+            return tokens.enumerated().map { (idx, token) in
+                AppRowDisplay(index: idx, token: token, minutes: liveByIndex[idx] ?? 0)
+            }
+            .sorted { $0.minutes > $1.minutes }
+            .prefix(10)
+            .map { $0 }
+        }()
+
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Les plus utilisées")
@@ -389,40 +418,49 @@ struct ProfileView: View {
                 Spacer()
             }
 
-            PassthroughDAR {
-                DeviceActivityReport(.init(rawValue: "todayTotal"), filter: darTodayAppsFilter)
-                    .id(darRefreshId)
+            VStack(spacing: 8) {
+                ForEach(rows, id: \.index) { row in
+                    perAppDisplayRow(row: row)
+                }
             }
-            .frame(height: 132)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Theme.bgCard)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
 
-    // MARK: - Per-app breakdown (DAM-sourced, 100% consistent with today score)
+    private struct AppRowDisplay {
+        let index: Int
+        let token: ApplicationToken?
+        let minutes: Int
+    }
 
     @ViewBuilder
-    private var perAppDAMSection: some View {
-        let entries = stManager.perAppBreakdown
-        if !entries.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Apps trackées")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(Theme.textMuted)
-                    Spacer()
-                }
-
-                VStack(spacing: 8) {
-                    ForEach(entries, id: \.index) { entry in
-                        perAppRow(entry: entry)
-                    }
-                }
+    private func perAppDisplayRow(row: AppRowDisplay) -> some View {
+        HStack(spacing: 12) {
+            if let token = row.token {
+                Label(token).labelStyle(.iconOnly)
+                    .frame(width: 28, height: 28)
+                Label(token).labelStyle(.titleOnly)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Theme.text)
+                    .lineLimit(1)
+            } else {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Theme.bgWarm)
+                    .frame(width: 28, height: 28)
+                Text("—")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Theme.textFaint)
             }
+            Spacer(minLength: 8)
+            Text(formatAppMinutes(row.minutes))
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundColor(row.minutes > 0 ? Theme.textMuted : Theme.textFaint)
         }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.bgCard)
+        )
     }
 
     @ViewBuilder
