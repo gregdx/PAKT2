@@ -288,6 +288,24 @@ class APIClient {
         let userId: String
         let username: String
         let bio: String
+        let todayMinutes: Int
+        let todaySocialMinutes: Int
+        let lastSyncAt: Date?
+
+        // Make the new fields optional so decode doesn't fail if backend is older
+        enum CodingKeys: String, CodingKey {
+            case userId, username, bio, todayMinutes, todaySocialMinutes, lastSyncAt
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            userId = try c.decode(String.self, forKey: .userId)
+            username = try c.decode(String.self, forKey: .username)
+            bio = try c.decodeIfPresent(String.self, forKey: .bio) ?? ""
+            todayMinutes = try c.decodeIfPresent(Int.self, forKey: .todayMinutes) ?? 0
+            todaySocialMinutes = try c.decodeIfPresent(Int.self, forKey: .todaySocialMinutes) ?? 0
+            lastSyncAt = try c.decodeIfPresent(Date.self, forKey: .lastSyncAt)
+        }
     }
 
     struct APIScore: Decodable {
@@ -434,10 +452,29 @@ class APIClient {
         let _: EmptyResponse = try await request(.DELETE, "/groups/\(groupID)")
     }
 
+    struct UpdateGroupBody: Encodable {
+        let name: String?
+        let stake: String?
+        let goalMinutes: Int?
+        let trackedApps: [String]?
+    }
+
+    func updateGroup(_ groupID: String, name: String? = nil, stake: String? = nil, goalMinutes: Int? = nil, trackedApps: [String]? = nil) async throws -> APIGroup {
+        let body = UpdateGroupBody(name: name, stake: stake, goalMinutes: goalMinutes, trackedApps: trackedApps)
+        return try await request(.PATCH, "/groups/\(groupID)", body: body)
+    }
+
     // MARK: - Scores
 
     func syncScore(minutes: Int, socialMinutes: Int? = nil, date: String) async throws {
         let _: EmptyResponse = try await request(.POST, "/scores/sync", body: SyncScoreBody(minutes: minutes, socialMinutes: socialMinutes, date: date))
+    }
+
+    /// Direct-assign score (bypasses backend GREATEST guard). Use when the
+    /// client's DAR-computed value must overwrite a previously-stored inflated
+    /// value. Backend broadcasts a `score_corrected` WS event to all co-members.
+    func correctScore(minutes: Int, socialMinutes: Int? = nil, date: String) async throws {
+        let _: EmptyResponse = try await request(.POST, "/scores/correct", body: SyncScoreBody(minutes: minutes, socialMinutes: socialMinutes, date: date))
     }
 
     func getGroupScores(groupID: String, since: String) async throws -> [APIScore] {
@@ -623,6 +660,180 @@ class APIClient {
 
     func getUserEvents(userId: String) async throws -> [APIUserEvent] {
         try await request(.GET, "/users/\(userId)/events")
+    }
+
+    // MARK: - Cities (Step 1 of events redesign)
+
+    struct APICity: Decodable, Identifiable, Hashable {
+        let id: String
+        let name: String
+        let countryCode: String
+        let lat: Double
+        let lng: Double
+        let raAreaCode: Int?
+        let timezone: String
+    }
+
+    func listCities() async throws -> [APICity] {
+        try await request(.GET, "/cities")
+    }
+
+    func getNearestCity(lat: Double, lng: Double) async throws -> APICity {
+        try await request(.GET, "/cities/nearest?lat=\(lat)&lng=\(lng)")
+    }
+
+    // MARK: - Events feed (Step 1 read-only)
+
+    struct APIEventListRow: Decodable, Identifiable {
+        let id: String
+        let title: String
+        let description: String
+        let date: Date
+        let endDate: Date?
+        let location: String
+        let address: String
+        let source: String
+        let sourceUrl: String
+        let imageUrl: String
+        let cityId: String?
+        let venueLat: Double?
+        let venueLng: Double?
+        let visibility: String
+        let creatorId: String?
+        let myRsvp: String?
+        let friendsGoingCount: Int
+        let friendNames: [String]
+    }
+
+    struct APIEventFriendAttendee: Decodable, Identifiable {
+        let userId: String
+        let username: String
+        let status: String
+        var id: String { userId }
+    }
+
+    struct APIEventDetail: Decodable, Identifiable {
+        let id: String
+        let title: String
+        let description: String
+        let date: Date
+        let endDate: Date?
+        let location: String
+        let address: String
+        let source: String
+        let sourceUrl: String
+        let imageUrl: String
+        let cityId: String?
+        let venueLat: Double?
+        let venueLng: Double?
+        let visibility: String
+        let creatorId: String?
+        let myRsvp: String?
+        let friendsGoingCount: Int
+        let friendNames: [String]
+        let friendAttendees: [APIEventFriendAttendee]
+    }
+
+    /// GET /v1/events with filters. Returns events ranked by friends_going_count DESC,
+    /// date ASC, enriched with the viewer's RSVP status and friend overlay.
+    func listEvents(
+        cityId: String,
+        filter: String? = nil,
+        query: String? = nil,
+        source: String? = nil,
+        from: Date? = nil,
+        to: Date? = nil,
+        friendsOnly: Bool = false,
+        limit: Int = 30,
+        offset: Int = 0
+    ) async throws -> [APIEventListRow] {
+        var params: [(String, String)] = [("city_id", cityId)]
+        if let filter = filter { params.append(("filter", filter)) }
+        if let query = query, !query.isEmpty { params.append(("q", query)) }
+        if let source = source { params.append(("source", source)) }
+        if friendsOnly { params.append(("friends_only", "1")) }
+        params.append(("limit", String(limit)))
+        if offset > 0 { params.append(("offset", String(offset))) }
+
+        let iso = ISO8601DateFormatter()
+        if let from = from { params.append(("from", iso.string(from: from))) }
+        if let to = to { params.append(("to", iso.string(from: to))) }
+
+        let qs = params.map { key, value in
+            let encoded = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
+            return "\(key)=\(encoded)"
+        }.joined(separator: "&")
+
+        return try await request(.GET, "/events?\(qs)")
+    }
+
+    func getEvent(id: String) async throws -> APIEventDetail {
+        try await request(.GET, "/events/\(id)")
+    }
+
+    // MARK: - Event creation (step 3)
+
+    struct CreateEventBody: Encodable {
+        let title: String
+        let description: String
+        let date: String          // ISO8601
+        let endDate: String       // ISO8601 or ""
+        let location: String
+        let address: String
+        let cityId: String
+        let venueLat: Double?
+        let venueLng: Double?
+        let imageUrl: String
+        let visibility: String    // "public" | "friends" | "invited"
+        let invitedUserIds: [String]
+
+        enum CodingKeys: String, CodingKey {
+            case title, description, date
+            case endDate = "end_date"
+            case location, address
+            case cityId = "city_id"
+            case venueLat = "venue_lat"
+            case venueLng = "venue_lng"
+            case imageUrl = "image_url"
+            case visibility
+            case invitedUserIds = "invited_user_ids"
+        }
+    }
+
+    func createEvent(_ body: CreateEventBody) async throws -> APIEventDetail {
+        try await request(.POST, "/events", body: body)
+    }
+
+    func deleteEvent(id: String) async throws {
+        let _: EmptyResponse = try await request(.DELETE, "/events/\(id)")
+    }
+
+    // MARK: - Chat event sharing
+
+    struct ChatEventBody: Encodable {
+        let toId: String
+        let eventId: String
+        enum CodingKeys: String, CodingKey {
+            case toId = "to_id"
+            case eventId = "event_id"
+        }
+    }
+
+    func sendChatEvent(toId: String, eventId: String) async throws {
+        let body = ChatEventBody(toId: toId, eventId: eventId)
+        let _: EmptyResponse = try await request(.POST, "/chat/event", body: body)
+    }
+
+    struct GroupChatEventBody: Encodable {
+        let eventId: String
+        enum CodingKeys: String, CodingKey {
+            case eventId = "event_id"
+        }
+    }
+
+    func sendGroupChatEvent(groupId: String, eventId: String) async throws {
+        let body = GroupChatEventBody(eventId: eventId)
+        let _: EmptyResponse = try await request(.POST, "/groupchat/\(groupId)/event", body: body)
     }
 }
 

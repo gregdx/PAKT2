@@ -584,58 +584,32 @@ struct InviteToEventSheet: View {
     }
 }
 
+// MARK: - My Events Section (for ProfileView)
+
+struct MyEventsSection: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        UserEventsSectionView(
+            userId: appState.currentUID,
+            title: L10n.t("events_attending"),
+            emptyMessage: "You're not attending any events yet. Discover some in the Events tab.",
+            showEmptyState: true
+        )
+    }
+}
+
 // MARK: - Friend Events Section (for FriendProfileView)
 
 struct FriendEventsSection: View {
     let userId: String
-    @State private var apiEvents: [APIClient.APIUserEvent] = []
-    @State private var loaded = false
-
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "EEE d MMM, HH:mm"
-        return f
-    }()
 
     var body: some View {
-        VStack(spacing: 0) {
-            if !apiEvents.isEmpty {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(L10n.t("events_attending"))
-                        .font(.system(size: 13, weight: .heavy)).foregroundColor(Theme.textFaint).tracking(2)
-                        .padding(.horizontal, 24)
-
-                    VStack(spacing: 0) {
-                        ForEach(apiEvents) { event in
-                            VStack(spacing: 0) {
-                                HStack(spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(event.title).font(.system(size: 16, weight: .semibold)).foregroundColor(Theme.text)
-                                        Text(event.date, style: .date).font(.system(size: 13)).foregroundColor(Theme.orange)
-                                        if !event.location.isEmpty {
-                                            Text(event.location).font(.system(size: 13)).foregroundColor(Theme.textMuted).lineLimit(1)
-                                        }
-                                    }
-                                    Spacer()
-                                    if event.status == "going" {
-                                        Text(L10n.t("going")).font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.green)
-                                    } else {
-                                        Text(L10n.t("interested")).font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.orange)
-                                    }
-                                }
-                                .padding(.horizontal, 16).padding(.vertical, 12)
-                            }
-                        }
-                    }
-                    .liquidGlass(cornerRadius: 16)
-                    .padding(.horizontal, 24)
-                }
-            }
-        }
-        .task {
-            guard !loaded else { return }
-            apiEvents = await EventManager.shared.fetchUserEvents(userId: userId)
-            loaded = true
-        }
+        UserEventsSectionView(
+            userId: userId,
+            title: L10n.t("events_attending"),
+            emptyMessage: "",
+            showEmptyState: false
+        )
     }
 }

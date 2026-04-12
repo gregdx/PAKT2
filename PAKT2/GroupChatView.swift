@@ -323,27 +323,44 @@ struct GroupChatView: View {
                         .padding(.bottom, 2)
                         .onTapGesture { openMemberProfile(msg.fromId, name: msg.fromName) }
                 }
-                EventMessageCard(text: msg.text ?? "", isMine: isMine)
-                    .contextMenu {
-                        if let text = msg.text {
+                if let evId = msg.eventId {
+                    ChatEventCard(eventId: evId, isMine: isMine)
+                        .contextMenu {
                             Button {
-                                UIPasteboard.general.string = text
+                                reportedMessageId = msg.id
+                                showReportSheet = true
                             } label: {
-                                Label(L10n.t("copy"), systemImage: "doc.on.doc")
+                                Label(L10n.t("report"), systemImage: "exclamationmark.triangle")
+                            }
+                            Button(role: .destructive) {
+                                messageToDelete = msg
+                            } label: {
+                                Label(L10n.t("delete"), systemImage: "trash")
                             }
                         }
-                        Button {
-                            reportedMessageId = msg.id
-                            showReportSheet = true
-                        } label: {
-                            Label(L10n.t("report"), systemImage: "exclamationmark.triangle")
+                } else {
+                    EventMessageCard(text: msg.text ?? "", isMine: isMine)
+                        .contextMenu {
+                            if let text = msg.text {
+                                Button {
+                                    UIPasteboard.general.string = text
+                                } label: {
+                                    Label(L10n.t("copy"), systemImage: "doc.on.doc")
+                                }
+                            }
+                            Button {
+                                reportedMessageId = msg.id
+                                showReportSheet = true
+                            } label: {
+                                Label(L10n.t("report"), systemImage: "exclamationmark.triangle")
+                            }
+                            Button(role: .destructive) {
+                                messageToDelete = msg
+                            } label: {
+                                Label(L10n.t("delete"), systemImage: "trash")
+                            }
                         }
-                        Button(role: .destructive) {
-                            messageToDelete = msg
-                        } label: {
-                            Label(L10n.t("delete"), systemImage: "trash")
-                        }
-                    }
+                }
             }
 
             if !isMine { Spacer(minLength: 40) }

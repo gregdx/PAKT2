@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import DeviceActivity
 
 struct GroupDetailView: View {
     let groupId: UUID
@@ -473,9 +474,31 @@ struct GroupDetailView: View {
 
                     Spacer()
 
-                    Text(mins > 0 ? formatTime(mins) : "--")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(mins == 0 ? Theme.textFaint : (rank == 1 ? Theme.green : Theme.text))
+                    if appState.isMe(member) {
+                        // Self's value comes from Monitor via loadProfileCache +
+                        // updateLocalGroups → same Text display as others. No DAR
+                        // remote view needed: it was opaque pixels, inconsistent
+                        // with other members who show backend Monitor values.
+                        Text(mins > 0 ? formatTime(mins) : "--")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(mins == 0 ? Theme.textFaint : (rank == 1 ? Theme.green : Theme.text))
+                    } else if member.isSyncStale {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 10))
+                            Text("No data · \(member.hoursSinceLastSync)h ago")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundColor(Theme.red)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Theme.red.opacity(0.12))
+                        .clipShape(Capsule())
+                    } else {
+                        Text(mins > 0 ? formatTime(mins) : "--")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(mins == 0 ? Theme.textFaint : (rank == 1 ? Theme.green : Theme.text))
+                    }
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
 
@@ -703,7 +726,7 @@ struct GroupDetailView: View {
 
     private var compactMemberList: some View {
         VStack(spacing: 6) {
-            ForEach(group.members, id: \.id) { member in
+            ForEach(group.members) { member in
                 Button { selectedMemberUID = member.uid } label: {
                     HStack(spacing: 12) {
                         AvatarView(name: member.name, size: 36, color: Theme.textMuted,
@@ -713,9 +736,26 @@ struct GroupDetailView: View {
                             .font(.system(size: 15, weight: .medium))
                             .foregroundColor(Theme.text)
                         Spacer()
-                        Text(formatTime(member.todayMinutes))
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(member.todayMinutes <= group.goalMinutes ? Theme.green : Theme.textMuted)
+                        if appState.isMe(member) {
+                            // Self's value comes from Monitor via loadProfileCache
+                            // → same Text display as everyone else. Consistent UI.
+                            Text(formatTime(member.todayMinutes))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(member.todayMinutes <= group.goalMinutes ? Theme.green : Theme.textMuted)
+                        } else if member.isSyncStale {
+                            // "Cache sa honte" — member hasn't synced in 24h+
+                            Text("Cache sa honte")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundColor(Theme.red)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Theme.red.opacity(0.12))
+                                .clipShape(Capsule())
+                        } else {
+                            Text(formatTime(member.todayMinutes))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(member.todayMinutes <= group.goalMinutes ? Theme.green : Theme.textMuted)
+                        }
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(Theme.textFaint)

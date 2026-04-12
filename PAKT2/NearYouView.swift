@@ -131,7 +131,7 @@ extension Venue {
 }
 
 enum DiscoverTab: CaseIterable {
-    case spots, events, free
+    case events, spots, free
 
     var label: String {
         switch self {
@@ -140,7 +140,7 @@ enum DiscoverTab: CaseIterable {
         case .free:   return L10n.t("free_activities")
         }
     }
-    
+
     var icon: String {
         switch self {
         case .spots:  return "mappin.circle"
@@ -159,7 +159,7 @@ struct NearYouView: View {
     @ObservedObject private var stManager = ScreenTimeManager.shared
     @StateObject private var locationManager = AppLocationManager()
 
-    @State private var discoverTab: DiscoverTab = .spots
+    @State private var discoverTab: DiscoverTab = .events
     @State private var showCreateEvent = false
     @State private var selectedCategory: VenueCategory? = nil
     @State private var selectedFreeCategory: ActCategory? = nil
@@ -227,9 +227,8 @@ struct NearYouView: View {
                         categoryPills
                         venuesList
                     } else if discoverTab == .events {
-                        paktEventsList
-                        brusselsEventsList
-                        raEventsList
+                        EventsFeedView()
+                            .padding(.top, 4)
                     } else {
                         freeCategoryPills
                         freeActivitiesList
@@ -546,18 +545,7 @@ struct NearYouView: View {
             }
             .padding(.horizontal, 24)
 
-            if upcoming.isEmpty {
-                VStack(spacing: 14) {
-                    Image(systemName: "calendar.badge.plus")
-                        .font(.system(size: 32))
-                        .foregroundColor(Theme.textFaint)
-                    Text(L10n.t("no_events_yet"))
-                        .font(.system(size: 15))
-                        .foregroundColor(Theme.textMuted)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.top, 40)
-            } else {
+            if !upcoming.isEmpty {
                 ForEach(upcoming) { event in
                     PaktEventCard(event: event, myUid: myUid)
                         .environmentObject(appState)

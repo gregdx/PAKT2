@@ -95,13 +95,14 @@ enum Log {
     private static let logger = Logger(subsystem: "com.PAKT2", category: "app")
 
     static func d(_ message: String) {
-        #if DEBUG
-        logger.debug("\(message, privacy: .public)")
-        #endif
+        // Use .info instead of .debug so the message survives Release builds
+        // too — we need these diagnostics to verify DAR IPC in Release.
+        logger.info("\(message, privacy: .public)")
     }
     static func i(_ message: String) { logger.info("\(message, privacy: .public)") }
     static func e(_ message: String) { logger.error("\(message, privacy: .public)") }
 }
+
 
 // MARK: - Cached Async Image
 

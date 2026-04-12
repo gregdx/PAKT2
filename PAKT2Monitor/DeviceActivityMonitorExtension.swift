@@ -20,15 +20,44 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
     override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
-        // New day — reset counter
-        defaults?.set(0, forKey: "st_todayMinutes")
+        let today = Self.dateFmt.string(from: Date())
+
+        // Reset ONLY this block's counter (not the daily total or other blocks).
+        // Each 2h block resets independently when its interval starts.
+        let activityRaw = activity.rawValue
+        if activityRaw.hasPrefix("pakt_block_") {
+            let blockNum = activityRaw.replacingOccurrences(of: "pakt_block_", with: "")
+            let blockKey = "block_\(blockNum)"
+            let blockDateKey = "\(blockKey)_date"
+            let storedDate = defaults?.string(forKey: blockDateKey) ?? ""
+            if storedDate != today {
+                // New day: reset this block
+                defaults?.set(0, forKey: blockKey)
+                defaults?.set(today, forKey: blockDateKey)
+            }
+            // Don't reset shared_today here — it's the SUM of all blocks,
+            // computed in eventDidReachThreshold.
+        } else {
+            // Legacy activity: reset daily total if new day
+            let storedDate = defaults?.string(forKey: "shared_today_date") ?? ""
+            if storedDate != today {
+                defaults?.set(0, forKey: "shared_today")
+                defaults?.set(today, forKey: "shared_today_date")
+            }
+        }
+
+        defaults?.set("intervalDidStart \(activityRaw) @ \(today) \(Self.timeFmt.string(from: Date()))", forKey: "monitor_debug_last_interval_start")
         defaults?.synchronize()
     }
+
+    private static let timeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"; return f
+    }()
 
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
         // End of day (midnight) — sync the final daily total
-        let totalMinutes = defaults?.integer(forKey: "st_todayMinutes") ?? 0
+        let totalMinutes = defaults?.integer(forKey: "shared_today") ?? 0
         guard totalMinutes > 0 else { return }
 
         // intervalDidEnd fires AT midnight → Date() is already the new day
@@ -54,32 +83,92 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         syncToBackend(minutes: totalMinutes, date: yesterdayStr)
     }
 
-    // MARK: - Threshold reached (every 15 min of screen time)
+    // MARK: - Threshold reached (Opal-style: 12 blocks × 16 events)
 
     override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
         super.eventDidReachThreshold(event, activity: activity)
 
+        // Parse event name "b{block}_{minutes}" (new format)
+        // or legacy "threshold_{minutes}" (backward compat)
+        let raw = event.rawValue
         var minutes = 0
-        if let minutesStr = event.rawValue.split(separator: "_").last, let m = Int(minutesStr) {
+
+        if raw.hasPrefix("b") {
+            // New format: b0_5, b3_60, etc.
+            guard let lastPart = raw.split(separator: "_").last,
+                  let m = Int(lastPart), m > 0 else { return }
             minutes = m
+        } else if raw.hasPrefix("threshold_") {
+            // Legacy format
+            guard let m = Int(raw.replacingOccurrences(of: "threshold_", with: "")), m > 0 else { return }
+            minutes = m
+        } else {
+            return
         }
 
-        guard minutes > 0 else { return }
+        let now = Self.timeFmt.string(from: Date())
+        defaults?.set("\(raw) @ \(now)", forKey: "monitor_debug_last_event")
 
-        // Écrire dans le Keychain pour que le main app puisse lire via loadProfileCache
-        // (vital quand les DARs ne fonctionnent pas)
-        keychainWrite("shared_today", value: "\(minutes)")
-        keychainWrite("shared_today_date", value: todayDateString)
+        let today = todayDateString
 
-        // Also update App Group (if it works)
-        defaults?.set(minutes, forKey: "shared_today")
-        defaults?.set(todayDateString, forKey: "shared_today_date")
+        // === Parse event name ===
+        // Format: "b{block}_{mins}" for total, "b{block}_a{app}_{mins}" for per-app
+        let parts = raw.split(separator: "_")
+        var appIdx: Int? = nil
+        if parts.count >= 3, parts[1].hasPrefix("a"), let idx = Int(parts[1].dropFirst()) {
+            appIdx = idx
+        }
+
+        // === Per-block max (idempotent) ===
+        let activityRaw = activity.rawValue
+        let blockNum = activityRaw.replacingOccurrences(of: "pakt_block_", with: "")
+
+        if let appIdx = appIdx {
+            // Per-app event: store per-app per-block max
+            let appBlockKey = "app\(appIdx)_block_\(blockNum)"
+            let appBlockDateKey = "\(appBlockKey)_date"
+            let existing = (defaults?.string(forKey: appBlockDateKey) == today) ? (defaults?.integer(forKey: appBlockKey) ?? 0) : 0
+            let appBlockMax = min(max(existing, minutes), 120)
+            defaults?.set(appBlockMax, forKey: appBlockKey)
+            defaults?.set(today, forKey: appBlockDateKey)
+
+            // Sum this app across all blocks
+            var appTotal = 0
+            for i in 0..<12 {
+                let k = "app\(appIdx)_block_\(i)"
+                if defaults?.string(forKey: "\(k)_date") == today {
+                    appTotal += defaults?.integer(forKey: k) ?? 0
+                }
+            }
+            defaults?.set(appTotal, forKey: "app\(appIdx)_today")
+            defaults?.set(today, forKey: "app\(appIdx)_today_date")
+        } else {
+            // Total event: store per-block max
+            let blockKey = "block_\(blockNum)"
+            let blockDateKey = "\(blockKey)_date"
+            let existingBlock = (defaults?.string(forKey: blockDateKey) == today) ? (defaults?.integer(forKey: blockKey) ?? 0) : 0
+            let blockMax = min(max(existingBlock, minutes), 120)
+            defaults?.set(blockMax, forKey: blockKey)
+            defaults?.set(today, forKey: blockDateKey)
+        }
+
+        // === Sum all blocks for daily total ===
+        var dailyTotal = 0
+        for i in 0..<12 {
+            let bk = "block_\(i)"
+            if defaults?.string(forKey: "\(bk)_date") == today {
+                dailyTotal += defaults?.integer(forKey: bk) ?? 0
+            }
+        }
+
+        defaults?.set(dailyTotal, forKey: "shared_today")
+        defaults?.set(today, forKey: "shared_today_date")
         defaults?.synchronize()
 
-        // Sync to backend
-        syncToBackend(minutes: minutes, date: todayDateString)
+        keychainWrite("shared_today", value: "\(dailyTotal)")
+        keychainWrite("shared_today_date", value: today)
 
-        // Réveiller l'app principale via Darwin notification
+        // Wake main app
         let center = CFNotificationCenterGetDarwinNotifyCenter()
         CFNotificationCenterPostNotification(center, CFNotificationName("com.PAKT2.screenTimeUpdate" as CFString), nil, nil, true)
     }

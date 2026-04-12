@@ -200,25 +200,46 @@ class AppState: ObservableObject {
     func setupWebSocketSubscriptions() {
         cancellables.removeAll()
 
+        // Score CORRECTIONS — these bypass max() and always overwrite locally.
+        // Triggered by POST /v1/scores/correct (client sends DAR-authoritative value).
+        WebSocketManager.shared.onScoreCorrected
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] update in
+                guard let self else { return }
+                for gi in self.groups.indices {
+                    for mi in self.groups[gi].members.indices {
+                        guard self.groups[gi].members[mi].uid == update.userId else { continue }
+                        let oldToday = self.groups[gi].members[mi].todayMinutes
+                        // Direct assign — correction can go UP or DOWN
+                        self.groups[gi].members[mi].todayMinutes = update.minutes
+                        self.groups[gi].members[mi].todaySocialMinutes = update.socialMinutes
+                        // Adjust monthMinutes by delta (signed)
+                        let delta = update.minutes - oldToday
+                        let newMonth = self.groups[gi].members[mi].monthMinutes + delta
+                        self.groups[gi].members[mi].monthMinutes = max(0, newMonth)
+                    }
+                }
+                self.saveGroupsLocal()
+            }
+            .store(in: &cancellables)
+
         // Score updates from other users (+ propre score via broadcast)
         WebSocketManager.shared.onScoreUpdated
             .collect(.byTime(DispatchQueue.main, .seconds(2)))
             .receive(on: DispatchQueue.main)
             .sink { [weak self] updates in
                 guard let self, !updates.isEmpty else { return }
-                let myUid = self.currentUID
                 for update in updates {
-                    // Ignorer les updates de mon propre score — le local (DAR/Monitor) fait autorité
-                    guard update.userId != myUid else { continue }
-
+                    // Apply WS updates for ALL users including self — use max() so local
+                    // high values (from DAR) don't get overwritten by lower backend values.
                     for gi in self.groups.indices {
                         for mi in self.groups[gi].members.indices {
                             if self.groups[gi].members[mi].uid == update.userId {
                                 let oldToday = self.groups[gi].members[mi].todayMinutes
                                 let oldTodaySocial = self.groups[gi].members[mi].todaySocialMinutes
 
-                                self.groups[gi].members[mi].todayMinutes = update.minutes
-                                self.groups[gi].members[mi].todaySocialMinutes = update.socialMinutes
+                                self.groups[gi].members[mi].todayMinutes = max(oldToday, update.minutes)
+                                self.groups[gi].members[mi].todaySocialMinutes = max(oldTodaySocial, update.socialMinutes)
 
                                 // Adjust monthMinutes so the "Total" ranking stays consistent
                                 let delta = max(0, update.minutes - oldToday)
@@ -338,7 +359,14 @@ class AppState: ObservableObject {
             if !uid.isEmpty { ScreenTimeManager.shared.fetchSinceStartCumulative(uid: uid, appState: self) }
             return
         }
-        let remoteGroups = apiGroups.map { $0.toGroup() }
+        // Build uid-indexed lookup of existing groups to preserve member scores
+        let existingByUUID = Dictionary(uniqueKeysWithValues: groups.compactMap { group -> (UUID, Group)? in
+            (group.id, group)
+        })
+        let remoteGroups: [Group] = apiGroups.map { apiG in
+            let prev = UUID(uuidString: apiG.id).flatMap { existingByUUID[$0] }
+            return apiG.toGroup(preserving: prev)
+        }
         await MainActor.run {
             mergeRemoteGroups(remoteGroups)
             // Propager les données screen time locales aux groupes fraîchement chargés
@@ -357,7 +385,13 @@ class AppState: ObservableObject {
     /// Sync léger : recharge juste les groupes sans refaire profil/scores
     func refreshGroupsOnly() async {
         guard let apiGroups = try? await APIClient.shared.listGroups(), !apiGroups.isEmpty else { return }
-        let remoteGroups = apiGroups.map { $0.toGroup() }
+        let existingByUUID = Dictionary(uniqueKeysWithValues: groups.compactMap { group -> (UUID, Group)? in
+            (group.id, group)
+        })
+        let remoteGroups: [Group] = apiGroups.map { apiG in
+            let prev = UUID(uuidString: apiG.id).flatMap { existingByUUID[$0] }
+            return apiG.toGroup(preserving: prev)
+        }
         await MainActor.run {
             mergeRemoteGroups(remoteGroups)
             ScreenTimeManager.shared.loadProfileCache()
@@ -492,9 +526,29 @@ class AppState: ObservableObject {
     }
 
     func updateGroup(_ group: Group) {
+        let previous = groups.first(where: { $0.id == group.id })
         if let idx = groups.firstIndex(where: { $0.id == group.id }) {
             groups[idx] = group
             saveGroupsLocal()
+        }
+        Task { [weak self] in
+            do {
+                _ = try await APIClient.shared.updateGroup(
+                    group.id.uuidString,
+                    name: group.name,
+                    stake: group.stake,
+                    goalMinutes: group.goalMinutes,
+                    trackedApps: group.trackedApps
+                )
+            } catch {
+                await MainActor.run {
+                    guard let self, let previous else { return }
+                    if let idx = self.groups.firstIndex(where: { $0.id == group.id }) {
+                        self.groups[idx] = previous
+                        self.saveGroupsLocal()
+                    }
+                }
+            }
         }
     }
 
@@ -684,8 +738,18 @@ struct DataPointData: Codable {
 // MARK: - APIGroup → Group conversion
 
 extension APIClient.APIGroup {
-    func toGroup() -> Group {
-        Group(
+    /// Convert API response to local Group, preserving any previously-known member scores
+    /// to avoid wiping them to zero on every refresh.
+    func toGroup(preserving previous: Group? = nil) -> Group {
+        // Build a uid -> previous member lookup so we can preserve scores by user, not by index.
+        var previousByUid: [String: Member] = [:]
+        if let previous = previous {
+            for m in previous.members where !m.uid.isEmpty {
+                previousByUid[m.uid] = m
+            }
+        }
+
+        return Group(
             id: UUID(uuidString: id) ?? UUID(),
             name: name, code: code,
             mode: GameMode(rawValue: mode) ?? .competitive,
@@ -696,7 +760,22 @@ extension APIClient.APIGroup {
             members: members.map { m in
                 let resolvedName = UsernameCache.resolve(uid: m.userId, name: m.username)
                 UsernameCache.store(uid: m.userId, name: m.username)
-                return Member(uid: m.userId, name: resolvedName, todayMinutes: 0, weekMinutes: 0, monthMinutes: 0, history: [], bio: m.bio)
+                let existing = previousByUid[m.userId]
+                // Use the newer of: backend value (from JOIN) vs local cached value
+                let today = max(m.todayMinutes, existing?.todayMinutes ?? 0)
+                let todaySocial = max(m.todaySocialMinutes, existing?.todaySocialMinutes ?? 0)
+                return Member(
+                    uid: m.userId,
+                    name: resolvedName,
+                    todayMinutes: today,
+                    weekMinutes: existing?.weekMinutes ?? 0,
+                    monthMinutes: existing?.monthMinutes ?? 0,
+                    todaySocialMinutes: todaySocial,
+                    monthSocialMinutes: existing?.monthSocialMinutes ?? 0,
+                    history: existing?.history ?? [],
+                    bio: m.bio,
+                    lastSyncAt: m.lastSyncAt ?? existing?.lastSyncAt
+                )
             },
             isFinished: isFinished,
             creatorId: creatorId,

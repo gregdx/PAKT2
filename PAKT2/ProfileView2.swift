@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import DeviceActivity
+import FamilyControls
 
 // MARK: - ProfileView
 
@@ -16,10 +17,20 @@ struct ProfileView: View {
     @State private var showSettings  = false
     @State private var profileRefreshTimer: Timer? = nil
     @State private var isTimerRunning = false
+    @State private var darRefreshId: Int = 0
+    @State private var darReceivedMinutes: Int = 0
+    @State private var openURLReceivedMinutes: Int = 0
     @State private var tappedDay: String? = nil
     @State private var myAchievements: Set<String> = []
     @State private var showAllMedals = false
     @State private var showGroupDetail = false
+    @State private var showAppPicker = false
+    @State private var showReaderInfo = false
+
+    private var hasAppSelection: Bool {
+        !stManager.familySelection.applicationTokens.isEmpty ||
+        !stManager.familySelection.categoryTokens.isEmpty
+    }
     @State private var selectedGroupId: UUID? = nil
     @State private var headerAppeared = false
     @State private var statsAppeared = false
@@ -33,25 +44,51 @@ struct ProfileView: View {
         guard !isTimerRunning else { return }
         isTimerRunning = true
         ScreenTimeManager.shared.loadProfileCache()
-        // Relire toutes les 10 secondes
+        // Relire toutes les 10 secondes + force DAR recompute
         profileRefreshTimer?.invalidate()
         profileRefreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
             ScreenTimeManager.shared.loadProfileCache()
+            // Don't change darRefreshId — it forces the DAR extension to
+            // fully reload (white flash). The DAR renders once on appear
+            // and stays stable. Only refresh on explicit pull-to-refresh.
         }
     }
 
-    // Filtres : .iPhone uniquement pour ne pas agréger les données d'autres appareils
+    // Filter DAR to the SAME scope as DeviceActivityMonitor: user's family
+    // selection, across all devices. This ensures the value displayed on
+    // profile matches what the Monitor writes to App Group (no more DAR vs
+    // DAM discrepancy). DeviceActivityEvent has no device filter, so DAM
+    // always counts cross-device — we drop .iPhone from DAR to match.
     private var todayFilter: DeviceActivityFilter {
-        DeviceActivityFilter(
-            segment: .daily(during: DateInterval(start: Calendar.current.startOfDay(for: Date()), end: Date())),
+        let selection = stManager.familySelection
+        return DeviceActivityFilter(
+            segment: .hourly(during: DateInterval(start: Calendar.current.startOfDay(for: Date()), end: Date())),
+            users: .all,
+            devices: .all,
+            applications: selection.applicationTokens,
+            categories: selection.categoryTokens,
+            webDomains: selection.webDomainTokens
+        )
+    }
+
+    /// DAR filter: 7 days for chart + today for apps. No app restriction.
+    private var darProfileFilter: DeviceActivityFilter {
+        let end = Date()
+        let start = Calendar.current.date(byAdding: .day, value: -6, to: Calendar.current.startOfDay(for: end)) ?? end
+        return DeviceActivityFilter(
+            segment: .daily(
+                during: DateInterval(start: start, end: end)
+            ),
             devices: .init([.iPhone])
         )
     }
     private var weekFilter: DeviceActivityFilter {
+        // Use .hourly instead of .daily — .daily is buggy and gives wrong values
+        // for today (partial day). The chart scene aggregates hourly into daily.
         let end = Date()
-        let start = Calendar.current.date(byAdding: .day, value: -14, to: end) ?? end
+        let start = Calendar.current.date(byAdding: .day, value: -7, to: end) ?? end
         return DeviceActivityFilter(
-            segment: .daily(during: DateInterval(start: start, end: end)),
+            segment: .hourly(during: DateInterval(start: start, end: end)),
             devices: .init([.iPhone])
         )
     }
@@ -59,7 +96,7 @@ struct ProfileView: View {
         let end = Date()
         let start = Calendar.current.date(byAdding: .day, value: -30, to: end) ?? end
         return DeviceActivityFilter(
-            segment: .daily(during: DateInterval(start: start, end: end)),
+            segment: .hourly(during: DateInterval(start: start, end: end)),
             devices: .init([.iPhone])
         )
     }
@@ -73,38 +110,25 @@ struct ProfileView: View {
                 VStack(spacing: 0) {
                     header
 
-                    // DARs — 5 scenes séparées (comme avant)
-                    VStack(spacing: 0) {
-                        DeviceActivityReport(.init(rawValue: "todayTotal"), filter: todayFilter)
-                            .frame(maxWidth: .infinity, minHeight: 1)
-                        DeviceActivityReport(.init(rawValue: "weekAverage"), filter: weekFilter)
-                            .frame(maxWidth: .infinity, minHeight: 1)
-                        DeviceActivityReport(.init(rawValue: "monthAverage"), filter: monthFilter)
-                            .frame(maxWidth: .infinity, minHeight: 1)
-                        DeviceActivityReport(.init(rawValue: "categories"), filter: todayFilter)
-                            .frame(maxWidth: .infinity, minHeight: 1)
-                        DeviceActivityReport(.init(rawValue: "weekChart"), filter: weekFilter)
-                            .frame(maxWidth: .infinity, minHeight: 1)
-                    }
-                    .frame(height: 5).opacity(0.01)
-                    .allowsHitTesting(false)
-
-                    // Stats SwiftUI
-                    VStack(spacing: 0) {
-                        todayScore
-
-                        streakBadge
-
-                        avgStats
-
-                        weekChart
-
-                        insightCard
-                    }
-
-                    // Achievements
-                    medalsCard
+                    // DAR view — exact Apple screen time, no app filter restriction.
+                    // Shows: today total + per-app breakdown + 14-day chart.
+                    // Rendered by the extension with full access to Screen Time data.
+                    // DAR exact screen time: today total + per-app breakdown.
+                    // DeviceActivityReport needs explicit height — iOS doesn't
+                    // report intrinsic size from extensions to the host.
+                    // Screen time from the Opal-style background reader.
+                    // Tracks ALL apps — no selection, no cheating.
+                    todayScore
                         .padding(.horizontal, 24)
+                        .padding(.top, 16)
+
+                    // 7-day chart — only reader data (App Group), no old sources
+                    weekChart
+                        .padding(.top, 16)
+                        .padding(.horizontal, 24)
+
+                    // My Events
+                    MyEventsSection()
                         .padding(.top, 24)
 
                     Spacer().frame(height: 80)
@@ -152,16 +176,20 @@ struct ProfileView: View {
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
         .onPreferenceChange(TodayMinutesKey.self) { minutes in
+            darReceivedMinutes = minutes
+            // Diagnostic: log every fire, including 0, so we can distinguish
+            // "preference never fires" from "preference fires with 0 minutes"
+            Log.d("[PAKT Profile] TodayMinutesKey preference fired: \(minutes)")
             guard minutes > 0 else { return }
-            Log.d("[PAKT Profile] TodayMinutes received: \(minutes)")
             let todayStr = ScreenTimeManager.dateFormatter.string(from: Date())
             UserDefaults.standard.set(minutes, forKey: UDKey.todayMinutes)
             UserDefaults.standard.set(todayStr, forKey: UDKey.todayDate)
             stManager.updateProfileToday(minutes)
             stManager.injectTodayIntoHistory(date: todayStr, minutes: minutes)
-            // Pousser la valeur réelle au backend (corrige les seuils arrondis du monitor)
             let social = stManager.categorySocial
-            Task { try? await APIClient.shared.syncScore(minutes: minutes, socialMinutes: social, date: todayStr) }
+            // Use correctScore (direct assign) so DAR value can correct any
+            // previously-stored inflated backend value.
+            Task { try? await APIClient.shared.correctScore(minutes: minutes, socialMinutes: social > 0 ? social : nil, date: todayStr) }
         }
         .onPreferenceChange(SocialMinutesKey.self) { social in
             guard social > 0 else { return }
@@ -196,6 +224,13 @@ struct ProfileView: View {
         .sheet(isPresented: $showFriends) {
             FriendsView().environmentObject(appState)
         }
+        .familyActivityPicker(isPresented: $showAppPicker, selection: Binding(
+            get: { stManager.familySelection },
+            set: { newSelection in
+                stManager.saveFamilySelection(newSelection)
+                stManager.startBackgroundMonitoring()
+            }
+        ))
         .sheet(isPresented: $showSettings, onDismiss: {
             if stManager.pendingAuthRequest {
                 stManager.pendingAuthRequest = false
@@ -222,6 +257,13 @@ struct ProfileView: View {
 
     // MARK: - Today score
 
+    private func formatMinutes(_ mins: Int) -> String {
+        if mins < 60 { return "\(mins)min" }
+        let h = mins / 60
+        let m = mins % 60
+        return m > 0 ? "\(h)h \(m)min" : "\(h)h"
+    }
+
     private var todayScore: some View {
         VStack(spacing: 6) {
             Text(stManager.profileToday > 0 ? formatTime(stManager.profileToday) : "--")
@@ -232,6 +274,19 @@ struct ProfileView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(Theme.textFaint)
                 .tracking(1.5)
+            Button {
+                showReaderInfo = true
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.textFaint.opacity(0.4))
+            }
+            .buttonStyle(.plain)
+            .alert("Screen Time Tracker", isPresented: $showReaderInfo) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("PAKT uses its own independent screen time tracker that runs in the background. Values may differ slightly from Apple's Screen Time in Settings, as we measure usage with our own system updated every 5 minutes.")
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)

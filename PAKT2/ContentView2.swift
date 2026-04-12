@@ -63,6 +63,11 @@ struct ContentView: View {
                     // Auth perdue (ex: l'utilisateur a touché aux réglages Temps d'écran)
                     Task { await stManager.requestAuthorization() }
                 }
+                // Force read Keychain/AppGroup + POST to backend on foreground
+                // The Monitor extension wrote fresh values while we were backgrounded.
+                stManager.loadProfileCache()
+                stManager.updateLocalGroups(appState: appState)
+                stManager.syncToBackend(appState: appState)
                 Task {
                     let ok = await AuthManager.shared.refreshTokens()
                     if ok {
@@ -95,7 +100,16 @@ struct ContentView: View {
         )
     }
 
+    // Global today filter used by the background DAR
+    private var globalTodayFilter: DeviceActivityFilter {
+        DeviceActivityFilter(
+            segment: .hourly(during: DateInterval(start: Calendar.current.startOfDay(for: Date()), end: Date())),
+            devices: .init([.iPhone])
+        )
+    }
+
     var mainApp: some View {
+        ZStack(alignment: .topLeading) {
         VStack(spacing: 0) {
             // Offline banner
             if !networkMonitor.isConnected {
@@ -168,8 +182,11 @@ struct ContentView: View {
                     .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: -4)
             )
         }
+
+        }
         .animation(.easeInOut(duration: 0.3), value: networkMonitor.isConnected)
         .onPreferenceChange(TodayMinutesKey.self) { minutes in
+            Log.d("[PAKT Content] TodayMinutesKey preference fired: \(minutes)")
             guard minutes > 0 else { return }
             let todayStr = ScreenTimeManager.dateFormatter.string(from: Date())
             UserDefaults.standard.set(minutes, forKey: UDKey.todayMinutes)

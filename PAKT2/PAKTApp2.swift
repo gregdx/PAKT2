@@ -50,7 +50,9 @@ struct PAKTApp: App {
                         // Mise à jour immédiate des groupes locaux
                         ScreenTimeManager.shared.updateLocalGroups(appState: AppState.shared)
                         let currentSocial = ScreenTimeManager.shared.categorySocial
-                        Task { try? await APIClient.shared.syncScore(minutes: minutes, socialMinutes: currentSocial > 0 ? currentSocial : nil, date: todayStr) }
+                        // Use correctScore so DAR-authoritative values can
+                        // correct any previously-stored inflated backend value.
+                        Task { try? await APIClient.shared.correctScore(minutes: minutes, socialMinutes: currentSocial > 0 ? currentSocial : nil, date: todayStr) }
 
                     case "weekavg":
                         guard let minutesStr = components.queryItems?.first(where: { $0.name == "minutes" })?.value,

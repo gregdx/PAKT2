@@ -39,7 +39,6 @@ struct GroupsListView: View {
                             }
                         }
                         header
-                        dailySummary
                         searchBar
                         homeFilterPills
                         if homeFilter == .groups {

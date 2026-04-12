@@ -56,6 +56,7 @@ struct WSChatMessage: Decodable {
     let text: String?
     let activityTitle: String?
     let activityEmoji: String?
+    let eventId: String?
     let response: String?
     let createdAt: Date?
 }
@@ -82,6 +83,7 @@ class WebSocketManager: ObservableObject {
 
     // Event publishers — views/managers subscribe to these
     let onScoreUpdated = PassthroughSubject<WSScoreUpdate, Never>()
+    let onScoreCorrected = PassthroughSubject<WSScoreUpdate, Never>()
     let onGroupUpdated = PassthroughSubject<WSGroupUpdate, Never>()
     let onFriendRequest = PassthroughSubject<WSFriendRequestEvent, Never>()
     let onFriendAdded = PassthroughSubject<WSFriendEvent, Never>()
@@ -279,6 +281,11 @@ class WebSocketManager: ObservableObject {
         case "score_updated":
             if let payload = try? decoder.decode(WSPayload<WSScoreUpdate>.self, from: data) {
                 DispatchQueue.main.async { self.onScoreUpdated.send(payload.data) }
+            }
+
+        case "score_corrected":
+            if let payload = try? decoder.decode(WSPayload<WSScoreUpdate>.self, from: data) {
+                DispatchQueue.main.async { self.onScoreCorrected.send(payload.data) }
             }
 
         case "group_updated":
