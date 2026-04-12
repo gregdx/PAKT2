@@ -384,29 +384,34 @@ struct ProfileView: View {
                 }
 
                 VStack(spacing: 8) {
-                    ForEach(entries) { entry in
-                        HStack(spacing: 12) {
-                            Label(entry.token).labelStyle(.iconOnly)
-                                .frame(width: 28, height: 28)
-                            Label(entry.token).labelStyle(.titleOnly)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Theme.text)
-                                .lineLimit(1)
-                            Spacer(minLength: 8)
-                            Text(formatAppMinutes(entry.minutes))
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                .foregroundColor(Theme.textMuted)
-                        }
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Theme.bgCard)
-                        )
+                    ForEach(entries, id: \.index) { entry in
+                        perAppRow(entry: entry)
                     }
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func perAppRow(entry: ScreenTimeManager.PerAppEntry) -> some View {
+        HStack(spacing: 12) {
+            Label(entry.token).labelStyle(.iconOnly)
+                .frame(width: 28, height: 28)
+            Label(entry.token).labelStyle(.titleOnly)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(Theme.text)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(formatAppMinutes(entry.minutes))
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundColor(Theme.textMuted)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.bgCard)
+        )
     }
 
     private func formatAppMinutes(_ m: Int) -> String {
