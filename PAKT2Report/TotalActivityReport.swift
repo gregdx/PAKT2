@@ -286,6 +286,18 @@ struct TodayReportView: View {
             }
         }
         .preference(key: TodayMinutesKey.self, value: info.minutes)
+        .preference(key: AutoPickedTokensKey.self, value: serializedTopTokens)
+    }
+
+    /// JSON-encoded [ApplicationToken] for the top 3 apps today. Bubbled up
+    /// via AutoPickedTokensKey so the host can auto-select them for DAM
+    /// tracking without a manual picker step.
+    private var serializedTopTokens: String {
+        let tokens = info.apps.prefix(3).compactMap { $0.token }
+        guard !tokens.isEmpty, let data = try? JSONEncoder().encode(Array(tokens)) else {
+            return ""
+        }
+        return String(data: data, encoding: .utf8) ?? ""
     }
 
 }

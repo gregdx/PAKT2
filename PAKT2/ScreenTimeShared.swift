@@ -34,6 +34,17 @@ struct MonthAvgKey: PreferenceKey {
     }
 }
 
+/// Carries a JSON-encoded [ApplicationToken] of the top 3 apps detected
+/// by the DAR extension. Used ONCE for auto-selection, then the host
+/// persists the tokens and tracks them via dedicated DAM events.
+struct AutoPickedTokensKey: PreferenceKey {
+    static var defaultValue: String = ""
+    static func reduce(value: inout String, nextValue: () -> String) {
+        let next = nextValue()
+        if !next.isEmpty { value = next }
+    }
+}
+
 struct HistoryKey: PreferenceKey {
     static var defaultValue: String = ""
     static func reduce(value: inout String, nextValue: () -> String) {
