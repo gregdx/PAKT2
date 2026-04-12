@@ -21,16 +21,28 @@ struct CreateEventSheetRemote: View {
     @State private var endDate = Date().addingTimeInterval(28 * 3600)
     @State private var location = ""
     @State private var address = ""
+    @State private var imageUrl = ""
     @State private var visibility: Visibility = .friends
     @State private var invitedIDs: Set<String> = []
 
     // UI state
     @State private var submitting = false
     @State private var errorMessage: String?
+    @State private var didPrefill = false
+
+    /// When non-nil, the sheet switches to edit mode: fields are pre-filled,
+    /// submit calls PATCH /events/:id instead of POST /events.
+    var editing: APIClient.APIEventDetail? = nil
 
     /// Callback fired on successful creation. The parent can use this to
     /// trigger a feed reload and/or push the event detail sheet.
     var onCreated: ((APIClient.APIEventDetail) -> Void)? = nil
+
+    /// Callback fired on successful edit. Mirrors onCreated but runs after
+    /// PATCH instead of POST.
+    var onUpdated: ((APIClient.APIEventDetail) -> Void)? = nil
+
+    private var isEditing: Bool { editing != nil }
 
     enum Visibility: String, CaseIterable, Identifiable {
         case publicEvent = "public"
@@ -73,6 +85,9 @@ struct CreateEventSheetRemote: View {
                     sectionTitle("Where")
                     locationFields
 
+                    sectionTitle("Photo")
+                    photoField
+
                     sectionTitle("Description")
                     descriptionField
 
@@ -104,12 +119,53 @@ struct CreateEventSheetRemote: View {
                 .padding(.top, 20)
             }
             .background(Theme.bg)
-            .navigationTitle("New event")
+            .navigationTitle(isEditing ? "Edit event" : "New event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
                 }
+            }
+            .onAppear { prefillIfNeeded() }
+        }
+    }
+
+    private func prefillIfNeeded() {
+        guard let ev = editing, !didPrefill else { return }
+        didPrefill = true
+        title = ev.title
+        description = ev.description
+        date = ev.date
+        if let end = ev.endDate {
+            hasEndDate = true
+            endDate = end
+        } else {
+            hasEndDate = false
+        }
+        location = ev.location
+        address = ev.address
+        imageUrl = ev.imageUrl
+        visibility = Visibility(rawValue: ev.visibility) ?? .friends
+    }
+
+    private var photoField: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TextField("Image URL (paste a link)", text: $imageUrl)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 14).fill(Theme.bgCard)
+                )
+            if let url = URL(string: imageUrl), !imageUrl.isEmpty {
+                CachedAsyncImage(url: url)
+                    .scaledToFill()
+                    .frame(height: 120)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
             }
         }
     }
@@ -298,7 +354,7 @@ struct CreateEventSheetRemote: View {
                         .tint(.white)
                 } else {
                     Image(systemName: "checkmark.circle.fill")
-                    Text("Create event")
+                    Text(isEditing ? "Save changes" : "Create event")
                         .font(.system(size: 16, weight: .bold))
                 }
             }
@@ -327,6 +383,11 @@ struct CreateEventSheetRemote: View {
         submitting = true
         defer { submitting = false }
 
+        if let editing = editing {
+            await submitEdit(for: editing)
+            return
+        }
+
         do {
             let detail = try await store.createEvent(
                 title: title.trimmingCharacters(in: .whitespaces),
@@ -335,6 +396,7 @@ struct CreateEventSheetRemote: View {
                 endDate: hasEndDate ? endDate : nil,
                 location: location,
                 address: address,
+                imageUrl: imageUrl,
                 visibility: visibility.rawValue,
                 invitedUserIds: Array(invitedIDs)
             )
@@ -348,6 +410,29 @@ struct CreateEventSheetRemote: View {
             errorMessage = "Error:\(msg)"
         } catch {
             errorMessage = "Error:\(error.localizedDescription)"
+        }
+    }
+
+    private func submitEdit(for ev: APIClient.APIEventDetail) async {
+        let iso = ISO8601DateFormatter()
+        let body = APIClient.UpdateEventBody(
+            title: title.trimmingCharacters(in: .whitespaces),
+            description: description,
+            date: iso.string(from: date),
+            endDate: hasEndDate ? iso.string(from: endDate) : nil,
+            clearEndDate: !hasEndDate,
+            location: location,
+            address: address,
+            imageUrl: imageUrl,
+            visibility: visibility.rawValue
+        )
+        do {
+            let updated = try await APIClient.shared.updateEvent(id: ev.id, body: body)
+            EventsRemoteStore.shared.invalidateDetailCache(id: ev.id)
+            onUpdated?(updated)
+            dismiss()
+        } catch {
+            errorMessage = "Error: \(error.localizedDescription)"
         }
     }
 }

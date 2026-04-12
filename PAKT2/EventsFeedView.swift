@@ -525,9 +525,7 @@ struct EventsFeedView: View {
                     }
                 }
 
-                if row.friendsGoingCount > 0 {
-                    friendsGoingBadge(row)
-                }
+                friendsGoingBadge(row)
 
                 Spacer(minLength: 0)
             }
@@ -583,15 +581,8 @@ struct EventsFeedView: View {
                         .lineLimit(1)
                 }
 
-                if row.friendsGoingCount > 0 {
-                    friendsGoingBadge(row)
-                        .padding(.top, 2)
-                } else {
-                    Text("No friends going yet")
-                        .font(.system(size: 11))
-                        .foregroundColor(Theme.textFaint)
-                        .padding(.top, 2)
-                }
+                friendsGoingBadge(row)
+                    .padding(.top, 2)
             }
 
             Spacer(minLength: 0)
@@ -604,26 +595,28 @@ struct EventsFeedView: View {
     }
 
     private func friendsGoingBadge(_ row: APIClient.APIEventListRow) -> some View {
-        HStack(spacing: 6) {
-            // Mini avatar dots for up to 3 friends
-            HStack(spacing: -6) {
-                ForEach(Array(row.friendNames.prefix(3).enumerated()), id: \.offset) { _, name in
-                    Circle()
-                        .fill(Theme.green.opacity(0.2))
-                        .frame(width: 22, height: 22)
-                        .overlay(
-                            Text(String(name.prefix(1)).uppercased())
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Theme.green)
-                        )
-                        .overlay(
-                            Circle().strokeBorder(Theme.bgCard, lineWidth: 1.5)
-                        )
+        let hasFriends = row.friendsGoingCount > 0 && !row.friendNames.isEmpty
+        return HStack(spacing: 6) {
+            if hasFriends {
+                HStack(spacing: -6) {
+                    ForEach(Array(row.friendNames.prefix(3).enumerated()), id: \.offset) { _, name in
+                        Circle()
+                            .fill(Theme.green.opacity(0.2))
+                            .frame(width: 22, height: 22)
+                            .overlay(
+                                Text(String(name.prefix(1)).uppercased())
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(Theme.green)
+                            )
+                            .overlay(
+                                Circle().strokeBorder(Theme.bgCard, lineWidth: 1.5)
+                            )
+                    }
                 }
             }
             Text(friendBadgeText(row))
                 .font(.system(size: 11, weight: .bold))
-                .foregroundColor(Theme.green)
+                .foregroundColor(hasFriends ? Theme.green : Theme.textFaint)
                 .lineLimit(1)
         }
     }
@@ -631,14 +624,18 @@ struct EventsFeedView: View {
     private func friendBadgeText(_ row: APIClient.APIEventListRow) -> String {
         let count = row.friendsGoingCount
         let names = row.friendNames
+        if count == 0 {
+            return "0 going"
+        }
         if names.isEmpty {
-            return "\(count) friend\(count > 1 ? "s" : "") going"
+            return "\(count) going"
         }
-        if count <= names.count {
-            return names.joined(separator: ", ") + (count > 1 ? " are going" : " is going")
+        let joined = names.prefix(3).joined(separator: ", ")
+        let extra = count - min(names.count, 3)
+        if extra > 0 {
+            return "\(joined) +\(extra) going"
         }
-        let extra = count - names.count
-        return names.joined(separator: ", ") + " +\(extra) going"
+        return "\(joined) going"
     }
 
     // MARK: - Data loading

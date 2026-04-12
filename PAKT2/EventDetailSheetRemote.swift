@@ -15,6 +15,7 @@ struct EventDetailSheetRemote: View {
     @State private var currentRSVP: String?  // "going" | "interested" | nil
     @State private var rsvpBusy = false
     @State private var showSharePicker = false
+    @State private var showEditSheet = false
 
     var body: some View {
         NavigationStack {
@@ -49,6 +50,17 @@ struct EventDetailSheetRemote: View {
             .sheet(isPresented: $showSharePicker) {
                 ShareEventToFriendSheet(eventId: row.id, eventTitle: row.title)
                     .environmentObject(AppState.shared)
+            }
+            .sheet(isPresented: $showEditSheet) {
+                if let d = detail {
+                    CreateEventSheetRemote(
+                        editing: d,
+                        onUpdated: { updated in
+                            detail = updated
+                            currentRSVP = updated.myRsvp
+                        }
+                    )
+                }
             }
         }
         // True liquid glass backdrop on the sheet itself. On iOS 26+ this
@@ -303,9 +315,32 @@ struct EventDetailSheetRemote: View {
                 )
             }
             .buttonStyle(.plain)
+
+            if isCreator {
+                Button { showEditSheet = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "pencil")
+                        Text("Edit event")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                    .foregroundColor(Theme.text)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Theme.bgCard)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
         }
         .disabled(rsvpBusy)
         .opacity(rsvpBusy ? 0.6 : 1)
+    }
+
+    private var isCreator: Bool {
+        guard let creator = detail?.creatorId ?? row.creatorId else { return false }
+        return creator == AuthManager.shared.currentUser?.id
     }
 
     private func toggleRSVP(status: String) async {

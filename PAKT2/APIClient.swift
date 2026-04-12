@@ -808,6 +808,22 @@ class APIClient {
         let _: EmptyResponse = try await request(.DELETE, "/events/\(id)")
     }
 
+    struct UpdateEventBody: Encodable {
+        let title: String?
+        let description: String?
+        let date: String?           // ISO8601 or nil
+        let endDate: String?        // ISO8601 or nil
+        let clearEndDate: Bool?
+        let location: String?
+        let address: String?
+        let imageUrl: String?
+        let visibility: String?
+    }
+
+    func updateEvent(id: String, body: UpdateEventBody) async throws -> APIEventDetail {
+        try await request(.PATCH, "/events/\(id)", body: body)
+    }
+
     // MARK: - Chat event sharing
 
     struct ChatEventBody: Encodable {
