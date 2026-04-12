@@ -133,24 +133,18 @@ struct ProfileView: View {
                     // Tracks ALL apps — no selection, no cheating.
                     todayScore
                         .padding(.horizontal, 24)
-                        .padding(.top, 16)
+                        .padding(.top, 4)
 
-                    // "Ton poison" — DAR renders just the 3 most-used app
-                    // icons. No numbers, no ranking info. Doesn't feed into
-                    // the score; the DAM total + calibration remains the
-                    // authoritative figure on this profile.
                     poisonSection
-                        .padding(.top, 20)
+                        .padding(.top, 14)
                         .padding(.horizontal, 24)
 
-                    // 7-day chart — only reader data (App Group), no old sources
                     weekChart
-                        .padding(.top, 16)
+                        .padding(.top, 14)
                         .padding(.horizontal, 24)
 
-                    // My Events
                     MyEventsSection()
-                        .padding(.top, 24)
+                        .padding(.top, 18)
 
                     Spacer().frame(height: 80)
                 }
@@ -742,7 +736,7 @@ struct ProfileView: View {
     // MARK: - Header
 
     var header: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 14) {
             // Title row
             HStack {
                 Text(L10n.t("profile"))
@@ -820,7 +814,7 @@ struct ProfileView: View {
                 .font(.system(size: 28, weight: .bold))
                 .foregroundColor(Theme.text)
         }
-        .padding(.bottom, 20)
+        .padding(.bottom, 6)
     }
 
 }
