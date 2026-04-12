@@ -58,8 +58,6 @@ struct SettingsView: View {
                     VStack(spacing: 28) {
                         profileCard
                         settingsGroup(title: L10n.t("daily_st_goal")) { goalSection }
-                        settingsGroup(title: "Apps tracked") { appsTrackedSection }
-                        settingsGroup(title: "Debug / Sync") { debugSection }
                         settingsGroup(title: L10n.t("preferences")) { preferencesSection }
                         settingsGroup(title: L10n.t("account")) { accountSection }
                         settingsGroup(title: L10n.t("support")) { supportSection }
@@ -629,10 +627,6 @@ struct SettingsView: View {
                 }
             )
 
-            rowDivider
-
-            // Screen time calibration — compensates for Apple's DAM overcount
-            calibrationRow
         }
     }
 
