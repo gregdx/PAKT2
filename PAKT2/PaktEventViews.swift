@@ -96,7 +96,7 @@ struct PaktEventCard: View {
                     .frame(maxWidth: .infinity).padding(.vertical, 10)
                     .background {
                         if isGoing { RoundedRectangle(cornerRadius: 10).fill(Theme.green) }
-                        else { RoundedRectangle(cornerRadius: 10).fill(.clear).liquidGlass(cornerRadius: 10) }
+                        else { RoundedRectangle(cornerRadius: 10).fill(Theme.bgCard) }
                     }
                 }
                 Button(action: {
@@ -111,7 +111,7 @@ struct PaktEventCard: View {
                     .frame(maxWidth: .infinity).padding(.vertical, 10)
                     .background {
                         if isInterested { RoundedRectangle(cornerRadius: 10).fill(Theme.orange) }
-                        else { RoundedRectangle(cornerRadius: 10).fill(.clear).liquidGlass(cornerRadius: 10) }
+                        else { RoundedRectangle(cornerRadius: 10).fill(Theme.bgCard) }
                     }
                 }
             }
@@ -251,7 +251,7 @@ struct EventDetailSheet2: View {
                             .frame(maxWidth: .infinity).padding(.vertical, 14)
                             .background {
                                 if isGoing { RoundedRectangle(cornerRadius: 12).fill(Theme.green) }
-                                else { RoundedRectangle(cornerRadius: 12).fill(.clear).liquidGlass(cornerRadius: 12) }
+                                else { RoundedRectangle(cornerRadius: 12).fill(Theme.bgCard) }
                             }
                         }
                         Button(action: { eventManager.toggleInterested(eventId: event.id, userId: myUid) }) {
@@ -263,7 +263,7 @@ struct EventDetailSheet2: View {
                             .frame(maxWidth: .infinity).padding(.vertical, 14)
                             .background {
                                 if isInterested { RoundedRectangle(cornerRadius: 12).fill(Theme.orange) }
-                                else { RoundedRectangle(cornerRadius: 12).fill(.clear).liquidGlass(cornerRadius: 12) }
+                                else { RoundedRectangle(cornerRadius: 12).fill(Theme.bgCard) }
                             }
                         }
                     }
@@ -302,7 +302,7 @@ struct EventDetailSheet2: View {
                             ForEach(currentEvent.goingIds, id: \.self) { uid in
                                 let name = friendManager.friends.first(where: { $0.id == uid })?.firstName ?? uid.prefix(8).description
                                 HStack(spacing: 10) {
-                                    AvatarView(name: name, size: 32, color: Theme.green, uid: uid, isMe: uid == myUid)
+                                    UserAvatarButton(uid: uid, name: name, size: 32, color: Theme.green, isMe: uid == myUid, disabled: uid.isEmpty)
                                         .environmentObject(appState)
                                     Text(uid == myUid ? L10n.t("you") : name)
                                         .font(.system(size: 15, weight: .medium)).foregroundColor(Theme.text)
@@ -322,7 +322,7 @@ struct EventDetailSheet2: View {
                             ForEach(currentEvent.interestedIds, id: \.self) { uid in
                                 let name = friendManager.friends.first(where: { $0.id == uid })?.firstName ?? uid.prefix(8).description
                                 HStack(spacing: 10) {
-                                    AvatarView(name: name, size: 32, color: Theme.orange, uid: uid, isMe: uid == myUid)
+                                    UserAvatarButton(uid: uid, name: name, size: 32, color: Theme.orange, isMe: uid == myUid, disabled: uid.isEmpty)
                                         .environmentObject(appState)
                                     Text(uid == myUid ? L10n.t("you") : name)
                                         .font(.system(size: 15, weight: .medium)).foregroundColor(Theme.text)
@@ -430,7 +430,7 @@ struct CreateEventSheet: View {
                                 }
                             }
                         }
-                        .onChange(of: selectedPhoto) { item in
+                        .onChange(of: selectedPhoto) { _, item in
                             Task {
                                 if let data = try? await item?.loadTransferable(type: Data.self) {
                                     imageData = UIImage(data: data)?.jpegData(compressionQuality: 0.5)
@@ -454,7 +454,7 @@ struct CreateEventSheet: View {
                                 .lineLimit(3...6).padding(14).liquidGlass(cornerRadius: 12)
                         }
 
-                        // Address (Google Maps style)
+                        // Address (tap → opens in Apple Maps)
                         VStack(alignment: .leading, spacing: 6) {
                             Text(L10n.t("event_location")).font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.textFaint).tracking(1)
                             HStack(spacing: 10) {
@@ -558,7 +558,7 @@ struct InviteToEventSheet: View {
                         ForEach(friendManager.friends) { friend in
                             let isIn = alreadyIn.contains(friend.id)
                             HStack(spacing: 12) {
-                                AvatarView(name: friend.firstName, size: 40, color: Theme.textMuted, uid: friend.id, isMe: false)
+                                UserAvatarButton(uid: friend.id, name: friend.firstName, size: 40, color: Theme.textMuted, isMe: false, disabled: friend.id.isEmpty)
                                     .environmentObject(appState)
                                 Text(friend.firstName).font(.system(size: 16, weight: .medium)).foregroundColor(Theme.text)
                                 Spacer()

@@ -43,6 +43,18 @@ enum VenueCategory: String, CaseIterable {
         case .sport:    return "sportscourt.fill"
         }
     }
+
+    /// Slug sent to /v1/spots?categories=… — must match the backend's category
+    /// values (lowercase, ASCII, no accents).
+    var backendSlug: String {
+        switch self {
+        case .fitness:  return "fitness"
+        case .cafe:     return "cafe"
+        case .outdoor:  return "outdoor"
+        case .wellness: return "wellness"
+        case .sport:    return "sport"
+        }
+    }
 }
 
 // MARK: - Sample venues
@@ -162,17 +174,23 @@ struct NearYouView: View {
     @State private var discoverTab: DiscoverTab = .events
     @State private var showCreateEvent = false
     @State private var selectedCategory: VenueCategory? = nil
-    @State private var selectedFreeCategory: ActCategory? = nil
+    /// Remote-first "Free activities" catalogue (replaces Activity.suggestions).
+    @StateObject private var activitiesStore = ActivitiesRemoteStore.shared
+    @State private var showFreeFilters: Bool = false
+    @State private var freeSearchTask: Task<Void, Never>? = nil
     @State private var radiusKm: Double = 15.0
     @State private var showRadiusPicker = false
     @State private var inviteFriend: Venue? = nil
     @State private var selectedVenue: Venue? = nil
     @State private var appeared = false
 
-    // Foursquare spots
-    @State private var fsqSpots: [DiscoverSpot] = []
-    @State private var fsqLoading = false
-    @State private var fsqLoaded = false
+    // Remote spots (replaces hardcoded Venue.all + Foursquare fallback)
+    @StateObject private var spotsStore = SpotsRemoteStore.shared
+    @StateObject private var eventsStore = EventsRemoteStore.shared
+    @State private var spotsQuery: String = ""
+    @State private var spotsSearchVisible: Bool = false
+    @State private var spotsSearchTask: Task<Void, Never>? = nil
+    @State private var selectedSpot: APIClient.APISpot? = nil
 
     // Brussels events
     @State private var brusselsEvents: [BrusselsEvent] = []
@@ -186,85 +204,53 @@ struct NearYouView: View {
     @State private var raError: String? = nil
     @State private var selectedRAEvent: RAEvent? = nil
 
-    /// Foursquare spots filtered by selected category and radius
-    private var filteredFsqSpots: [DiscoverSpot] {
-        fsqSpots.filter { spot in
-            spot.distance <= radiusKm
-            && (selectedCategory == nil || spot.venueCategory == selectedCategory)
+    /// Active city for the spots feed. Falls back to "city_brussels" so the
+    /// feature works before the user explicitly picks a city.
+    private var activeCityId: String {
+        eventsStore.selectedCityId ?? "city_brussels"
+    }
+
+    /// Remote spots filtered by radius and category on the client so the slider
+    /// still works without an extra request per change.
+    private var filteredRemoteSpots: [APIClient.APISpot] {
+        let cat = selectedCategory?.backendSlug
+        let base = spotsStore.spots.filter { spot in
+            cat == nil || spot.category.lowercased() == cat
         }
-    }
-
-    /// Whether we have real API spots to show (Foursquare loaded successfully with results)
-    private var hasApiSpots: Bool {
-        fsqLoaded && !fsqSpots.isEmpty
-    }
-
-    private var filteredVenues: [Venue] {
         guard let userLocation = locationManager.location else {
-            // No location yet — show all venues matching category, sorted by name
-            return Venue.all.filter { venue in
-                selectedCategory == nil || venue.category == selectedCategory
-            }
+            return base
         }
-        return Venue.all
-            .filter { venue in
-                venue.distanceFrom(userLocation) <= radiusKm
-                && (selectedCategory == nil || venue.category == selectedCategory)
+        return base
+            .filter { SpotsRemoteStore.distanceKm(spot: $0, from: userLocation) <= radiusKm }
+            .sorted {
+                SpotsRemoteStore.distanceKm(spot: $0, from: userLocation)
+                    < SpotsRemoteStore.distanceKm(spot: $1, from: userLocation)
             }
-            .sorted { $0.distanceFrom(userLocation) < $1.distanceFrom(userLocation) }
     }
 
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    header
-                    discoverTabs
-
-                    if discoverTab == .spots {
-                        radiusSelector
-                        categoryPills
-                        venuesList
-                    } else if discoverTab == .events {
-                        EventsFeedView()
-                            .padding(.top, 4)
-                    } else {
-                        freeCategoryPills
-                        freeActivitiesList
-                    }
-
-                    Spacer().frame(height: 100)
-                }
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 12)
+            VStack(spacing: 0) {
+                EventsFeedView()
             }
-        }
-        .refreshable {
-            if discoverTab == .spots {
-                fsqLoaded = false
-                loadFoursquareSpots()
-            } else if discoverTab == .events {
-                raLoaded = false
-                brusselsLoaded = false
-                loadRAEvents()
-                loadBrusselsEvents()
-            }
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared ? 0 : 12)
         }
         .onAppear {
             withAnimation(.easeOut(duration: 0.3)) { appeared = true }
             locationManager.requestPermission()
             locationManager.startUpdating()
         }
-        .onChange(of: discoverTab) { _, newTab in
-            if newTab == .events && !raLoaded && !raLoading {
-                loadRAEvents()
-            }
-            if newTab == .events && !brusselsLoaded && !brusselsLoading {
-                loadBrusselsEvents()
-            }
-            if newTab == .spots && !fsqLoaded && !fsqLoading {
-                loadFoursquareSpots()
+        .onChange(of: selectedCategory) { _, _ in
+            Task { await reloadSpots() }
+        }
+        .onChange(of: spotsQuery) { _, _ in
+            spotsSearchTask?.cancel()
+            spotsSearchTask = Task {
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled else { return }
+                await reloadSpots()
             }
         }
         .onChange(of: locationManager.location) { _, newLoc in
@@ -275,9 +261,9 @@ struct NearYouView: View {
             if discoverTab == .events && !brusselsLoaded && !brusselsLoading {
                 loadBrusselsEvents()
             }
-            if !fsqLoaded && !fsqLoading {
-                loadFoursquareSpots()
-            }
+        }
+        .sheet(item: $selectedSpot) { spot in
+            SpotDetailSheet(spot: spot, userLocation: locationManager.location)
         }
         .sheet(item: $inviteFriend) { venue in
             InviteFriendSheet(venue: venue, friends: fm.friends)
@@ -344,31 +330,18 @@ struct NearYouView: View {
         }
     }
 
-    // MARK: - Load Foursquare spots
+    // MARK: - Load Spots (remote)
 
-    private func loadFoursquareSpots() {
-        guard let location = locationManager.location else { return }
-        fsqLoading = true
-        Task {
-            do {
-                let spots = try await FoursquareService.shared.searchNearby(
-                    lat: location.coordinate.latitude,
-                    lon: location.coordinate.longitude,
-                    radiusMeters: Int(radiusKm * 1000)
-                )
-                await MainActor.run {
-                    fsqSpots = spots
-                    fsqLoading = false
-                    fsqLoaded = true
-                }
-            } catch {
-                await MainActor.run {
-                    fsqLoading = false
-                    fsqLoaded = true
-                }
-                Log.e("[FSQ] Error: \(error)")
-            }
-        }
+    /// Fetch the spots feed from /v1/spots. Category filtering is applied
+    /// server-side so the payload stays small when a chip is active.
+    private func reloadSpots(forceRefresh: Bool = false) async {
+        let cats = selectedCategory.map { [$0.backendSlug] } ?? []
+        await spotsStore.loadSpots(
+            cityId: activeCityId,
+            categories: cats,
+            query: spotsQuery.trimmingCharacters(in: .whitespaces),
+            forceRefresh: forceRefresh
+        )
     }
 
     // MARK: - RA Event helpers
@@ -476,16 +449,12 @@ struct NearYouView: View {
                 Text(label)
                     .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
             }
-            .foregroundColor(isSelected ? Theme.bg : Theme.textMuted)
+            .foregroundColor(isSelected ? .white : Theme.text)
             .padding(.vertical, 8)
             .padding(.horizontal, 14)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 20).fill(Theme.text)
-                } else {
-                    RoundedRectangle(cornerRadius: 20).fill(.clear).liquidGlass(cornerRadius: 20)
-                }
-            }
+            .background(
+                Capsule().fill(isSelected ? Theme.text : Theme.bgCard)
+            )
         }
     }
 
@@ -506,16 +475,12 @@ struct NearYouView: View {
                             Text(tab.label)
                                 .font(.system(size: 15, weight: discoverTab == tab ? .semibold : .regular))
                         }
-                        .foregroundColor(discoverTab == tab ? Theme.bg : Theme.textMuted)
+                        .foregroundColor(discoverTab == tab ? .white : Theme.text)
                         .padding(.vertical, 8)
                         .padding(.horizontal, 16)
-                        .background {
-                            if discoverTab == tab {
-                                RoundedRectangle(cornerRadius: 20).fill(Theme.text)
-                            } else {
-                                RoundedRectangle(cornerRadius: 20).fill(.clear).liquidGlass(cornerRadius: 20)
-                            }
-                        }
+                        .background(
+                            Capsule().fill(discoverTab == tab ? Theme.text : Theme.bgCard)
+                        )
                     }
                 }
             }
@@ -669,7 +634,7 @@ struct NearYouView: View {
                         .lineLimit(3)
                 }
 
-                // Address (tappable -> Google Maps)
+                // Address (tappable -> Apple Maps)
                 if !event.address.isEmpty {
                     Button(action: {
                         if let url = event.mapsURL {
@@ -928,17 +893,112 @@ struct NearYouView: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    // MARK: - Free activities
+    // MARK: - Free activities (remote-first with offline fallback)
 
+    /// Search bar + "Filters" button in a single row above the category pills.
+    private var freeSearchBar: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Theme.textMuted)
+                TextField(L10n.t("search_activities"),
+                          text: Binding(
+                            get: { activitiesStore.filters.searchText },
+                            set: { newVal in
+                                activitiesStore.filters.searchText = newVal
+                            }))
+                    .font(.system(size: 14))
+                    .foregroundColor(Theme.text)
+                    .submitLabel(.search)
+                if !activitiesStore.filters.searchText.isEmpty {
+                    Button {
+                        activitiesStore.filters.searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(Theme.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .liquidGlass(cornerRadius: 14)
+
+            Button {
+                showFreeFilters = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(L10n.t("advanced_filters"))
+                        .font(.system(size: 13, weight: .semibold))
+                    if activitiesStore.filters.activeCount > 0 {
+                        Text("\(activitiesStore.filters.activeCount)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Theme.blue))
+                    }
+                }
+                .foregroundColor(Theme.text)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .liquidGlass(cornerRadius: 14)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 10)
+        .onChange(of: activitiesStore.filters.searchText) { _, _ in
+            freeSearchTask?.cancel()
+            freeSearchTask = Task {
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled else { return }
+                await activitiesStore.load(cityId: activeCityId)
+            }
+        }
+        .onChange(of: activitiesStore.filters.categories) { _, _ in
+            Task { await activitiesStore.load(cityId: activeCityId) }
+        }
+        .onChange(of: activitiesStore.filters.featuredOnly) { _, _ in
+            Task { await activitiesStore.load(cityId: activeCityId) }
+        }
+        .task {
+            // Initial fetch. Duration filter is client-side so it doesn't trigger loads.
+            await activitiesStore.load(cityId: activeCityId)
+        }
+        .sheet(isPresented: $showFreeFilters) {
+            AdvancedFiltersSheet(
+                selection: $activitiesStore.filters,
+                categories: AdvancedFiltersSheet.FilterCategoryOption.freeActivityCategories,
+                showDurationSection: true,
+                showFeaturedToggle: true
+            )
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    /// Horizontal category quick-pick row. Writes into the shared selection
+    /// so it stays in sync with the advanced filters sheet. "All" clears the
+    /// multi-select back to empty.
     private var freeCategoryPills: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                pill(label: L10n.t("all"), icon: nil, isSelected: selectedFreeCategory == nil) {
-                    selectedFreeCategory = nil
+                pill(label: L10n.t("all"),
+                     icon: nil,
+                     isSelected: activitiesStore.filters.categories.isEmpty) {
+                    activitiesStore.filters.categories.removeAll()
                 }
                 ForEach(ActCategory.allCases, id: \.self) { cat in
-                    pill(label: cat.label, icon: nil, isSelected: selectedFreeCategory == cat) {
-                        selectedFreeCategory = cat
+                    let isOn = activitiesStore.filters.categories.contains(cat.rawValue)
+                    pill(label: cat.label, icon: nil, isSelected: isOn) {
+                        if isOn {
+                            activitiesStore.filters.categories.remove(cat.rawValue)
+                        } else {
+                            activitiesStore.filters.categories.insert(cat.rawValue)
+                        }
                     }
                 }
             }
@@ -947,19 +1007,93 @@ struct NearYouView: View {
         .padding(.bottom, 20)
     }
 
+    @ViewBuilder
     private var freeActivitiesList: some View {
-        let filtered = selectedFreeCategory == nil
-            ? Activity.suggestions
-            : Activity.suggestions.filter { $0.category == selectedFreeCategory }
-
-        return VStack(spacing: 12) {
-            ForEach(filtered) { activity in
-                freeActivityCard(activity)
+        if activitiesStore.didLoadRemote {
+            let items = activitiesStore.filteredActivities
+            if items.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 32))
+                        .foregroundColor(Theme.textFaint)
+                    Text(L10n.t("no_activities_found"))
+                        .font(.system(size: 14))
+                        .foregroundColor(Theme.textMuted)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 40)
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(items) { activity in
+                        remoteActivityCard(activity)
+                    }
+                }
+                .padding(.horizontal, 24)
             }
+        } else if activitiesStore.isLoading {
+            ProgressView()
+                .tint(Theme.textMuted)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 40)
+        } else {
+            // Offline fallback: hardcoded Activity.suggestions, filtered by the
+            // selected quick-pick categories so the UI still feels responsive.
+            let selectedCats = activitiesStore.filters.categories
+            let base: [Activity] = selectedCats.isEmpty
+                ? Activity.suggestions
+                : Activity.suggestions.filter { selectedCats.contains($0.category.rawValue) }
+
+            VStack(spacing: 12) {
+                ForEach(base) { activity in
+                    freeActivityCard(activity)
+                }
+            }
+            .padding(.horizontal, 24)
         }
-        .padding(.horizontal, 24)
     }
 
+    /// Card for a remote APIActivity. Mirrors the layout of the legacy offline
+    /// card so the visual transition is seamless.
+    private func remoteActivityCard(_ activity: APIClient.APIActivity) -> some View {
+        let cat = ActCategory(rawValue: activity.category) ?? .chill
+        return HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(cat.color.opacity(0.15))
+                    .frame(width: 52, height: 52)
+                Image(systemName: cat.icon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(cat.color)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(activity.title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Theme.text)
+                    if activity.isFeatured {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.yellow)
+                    }
+                }
+                Text(activity.description)
+                    .font(.system(size: 13))
+                    .foregroundColor(Theme.textMuted)
+                    .lineLimit(2)
+                if let m = activity.durationMinutes {
+                    Text("\(m) min")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Theme.textFaint)
+                }
+            }
+            Spacer()
+        }
+        .padding(14)
+        .liquidGlass(cornerRadius: 16)
+    }
+
+    /// Offline-fallback card for the legacy `Activity` struct.
     private func freeActivityCard(_ activity: Activity) -> some View {
         HStack(spacing: 14) {
             ZStack {
@@ -985,69 +1119,212 @@ struct NearYouView: View {
         .liquidGlass(cornerRadius: 16)
     }
 
-    // MARK: - Venues list (Foursquare API spots + hardcoded fallback)
+    // MARK: - Search (spots)
+
+    private var spotsSearchBarToggle: some View {
+        HStack {
+            Spacer()
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    spotsSearchVisible.toggle()
+                    if !spotsSearchVisible { spotsQuery = "" }
+                }
+            } label: {
+                Image(systemName: spotsSearchVisible ? "xmark.circle.fill" : "magnifyingglass")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.text)
+                    .frame(width: 36, height: 36)
+                    .liquidGlass(cornerRadius: 18)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 8)
+    }
+
+    private var spotsSearchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13))
+                .foregroundColor(Theme.textFaint)
+            TextField("Search spots...", text: $spotsQuery)
+                .font(.system(size: 15))
+                .foregroundColor(Theme.text)
+                .textInputAutocapitalization(.never)
+                .submitLabel(.search)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .liquidGlass(cornerRadius: 14)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 10)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    // MARK: - Venues list (remote /v1/spots)
 
     private var venuesList: some View {
         VStack(spacing: 14) {
-            if fsqLoading {
+            if spotsStore.isLoading && spotsStore.spots.isEmpty {
                 VStack(spacing: 12) {
                     ProgressView()
                         .tint(Theme.textMuted)
-                    Text("Loading nearby spots...")
+                    Text(L10n.t("loading"))
                         .font(.system(size: 14))
                         .foregroundColor(Theme.textMuted)
                 }
                 .padding(.top, 40)
-            } else if hasApiSpots {
-                // Show real Foursquare spots
-                if filteredFsqSpots.isEmpty {
-                    VStack(spacing: 14) {
-                        Image(systemName: "mappin.slash")
-                            .font(.system(size: 32))
-                            .foregroundColor(Theme.textFaint)
-                        Text(L10n.t("no_venues_radius"))
-                            .font(.system(size: 15))
-                            .foregroundColor(Theme.textMuted)
-                    }
-                    .padding(.top, 60)
-                } else {
-                    // Powered by badge
-                    HStack {
-                        Text("Powered by Foursquare")
-                            .font(.system(size: 11))
-                            .foregroundColor(Theme.textFaint)
-                        Spacer()
-                        Button(action: { loadFoursquareSpots() }) {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 13))
-                                .foregroundColor(Theme.textMuted)
-                        }
-                    }
-
-                    ForEach(filteredFsqSpots) { spot in
-                        fsqSpotCard(spot)
-                    }
+            } else if filteredRemoteSpots.isEmpty {
+                VStack(spacing: 14) {
+                    Image(systemName: "mappin.slash")
+                        .font(.system(size: 32))
+                        .foregroundColor(Theme.textFaint)
+                    Text(L10n.t("no_venues_radius"))
+                        .font(.system(size: 15))
+                        .foregroundColor(Theme.textMuted)
                 }
+                .padding(.top, 60)
             } else {
-                // Fallback to hardcoded venues (no API key, offline, or empty result)
-                if filteredVenues.isEmpty {
-                    VStack(spacing: 14) {
-                        Image(systemName: "mappin.slash")
-                            .font(.system(size: 32))
-                            .foregroundColor(Theme.textFaint)
-                        Text(L10n.t("no_venues_radius"))
-                            .font(.system(size: 15))
-                            .foregroundColor(Theme.textMuted)
-                    }
-                    .padding(.top, 60)
-                } else {
-                    ForEach(filteredVenues) { venue in
-                        venueCard(venue)
-                    }
+                ForEach(filteredRemoteSpots) { spot in
+                    spotCard(spot)
                 }
             }
         }
         .padding(.horizontal, 24)
+    }
+
+    // MARK: - Remote spot card (mirrors Events card polish)
+
+    private func spotCard(_ spot: APIClient.APISpot) -> some View {
+        Button(action: { selectedSpot = spot }) {
+            VStack(spacing: 0) {
+                // Photo
+                ZStack(alignment: .bottomLeading) {
+                    ZStack {
+                        LinearGradient(
+                            colors: [Color(red: 0.20, green: 0.22, blue: 0.30), Color(red: 0.10, green: 0.12, blue: 0.18)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                        .overlay(
+                            Image(systemName: iconForCategory(spot.category))
+                                .font(.system(size: 40, weight: .light))
+                                .foregroundColor(.white.opacity(0.25))
+                        )
+                        if !spot.imageUrl.isEmpty, let url = URL(string: spot.imageUrl) {
+                            CachedAsyncImage(url: url).scaledToFill()
+                        }
+                    }
+                    .frame(height: 160)
+                    .clipped()
+
+                    HStack(spacing: 8) {
+                        Text(spot.category.uppercased())
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(0.8)
+                            .foregroundColor(.white)
+                            .padding(.vertical, 5)
+                            .padding(.horizontal, 10)
+                            .background(Color.black.opacity(0.6))
+                            .cornerRadius(8)
+
+                        if let userLocation = locationManager.location {
+                            let km = SpotsRemoteStore.distanceKm(spot: spot, from: userLocation)
+                            HStack(spacing: 4) {
+                                Image(systemName: "location.fill").font(.system(size: 10))
+                                Text(String(format: "%.1f km", km))
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.vertical, 5)
+                            .padding(.horizontal, 10)
+                            .background(Color.black.opacity(0.6))
+                            .cornerRadius(8)
+                        }
+                    }
+                    .padding(12)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                // Info
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(spot.name)
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(Theme.text)
+                                .multilineTextAlignment(.leading)
+                            if !spot.tagline.isEmpty {
+                                Text(spot.tagline)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Theme.textMuted)
+                                    .multilineTextAlignment(.leading)
+                            }
+                        }
+                        Spacer()
+                        if let rating = spot.rating {
+                            HStack(spacing: 3) {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Theme.orange)
+                                Text(String(format: "%.1f", rating))
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(Theme.text)
+                            }
+                        }
+                    }
+
+                    if !spot.address.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "mappin")
+                                .font(.system(size: 11))
+                                .foregroundColor(Theme.textFaint)
+                            Text(spot.address)
+                                .font(.system(size: 13))
+                                .foregroundColor(Theme.blue)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    // Website + Instagram
+                    HStack(spacing: 14) {
+                        if !spot.websiteUrl.isEmpty, let url = URL(string: spot.websiteUrl) {
+                            Button(action: { UIApplication.shared.open(url) }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "safari").font(.system(size: 12))
+                                    Text(L10n.t("website")).font(.system(size: 13, weight: .medium))
+                                }
+                                .foregroundColor(Theme.textMuted)
+                            }
+                        }
+                        if !spot.instagram.isEmpty,
+                           let url = URL(string: "https://instagram.com/\(spot.instagram)") {
+                            Button(action: { UIApplication.shared.open(url) }) {
+                                HStack(spacing: 4) {
+                                    Text(L10n.t("instagram_short")).font(.system(size: 13, weight: .heavy))
+                                    Text("@\(spot.instagram)").font(.system(size: 13, weight: .medium))
+                                }
+                                .foregroundColor(Theme.textMuted)
+                            }
+                        }
+                        Spacer()
+                    }
+                }
+                .padding(14)
+            }
+            .liquidGlass(cornerRadius: 18)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func iconForCategory(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "fitness":  return "figure.run"
+        case "cafe":     return "cup.and.saucer.fill"
+        case "outdoor":  return "leaf.fill"
+        case "wellness": return "sparkles"
+        case "sport":    return "sportscourt.fill"
+        default:         return "mappin.circle.fill"
+        }
     }
 
     // MARK: - Foursquare Spot Card
@@ -1119,11 +1396,11 @@ struct NearYouView: View {
                     }
                 }
 
-                // Address (tappable -> Google Maps)
+                // Address (tappable -> Apple Maps)
                 if !spot.address.isEmpty {
                     Button(action: {
                         let encoded = spot.address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                        if let url = URL(string: "https://www.google.com/maps/search/?api=1&query=\(encoded)") {
+                        if let url = URL(string: "https://maps.apple.com/?q=\(encoded)") {
                             UIApplication.shared.open(url)
                         }
                     }) {
@@ -1217,7 +1494,7 @@ struct NearYouView: View {
                 // Address (tappable → Maps)
                 Button(action: {
                     let encoded = venue.address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                    if let url = URL(string: "https://www.google.com/maps/search/?api=1&query=\(encoded)") {
+                    if let url = URL(string: "https://maps.apple.com/?q=\(encoded)") {
                         UIApplication.shared.open(url)
                     }
                 }) {
@@ -1437,7 +1714,7 @@ struct VenueDetailSheet: View {
                         // Distance + address (tappable → Maps)
                         Button(action: {
                             let encoded = venue.address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                            if let url = URL(string: "https://www.google.com/maps/search/?api=1&query=\(encoded)") { openURL(url) }
+                            if let url = URL(string: "https://maps.apple.com/?q=\(encoded)") { openURL(url) }
                         }) {
                             HStack(spacing: 16) {
                                 HStack(spacing: 5) {
@@ -1596,7 +1873,7 @@ struct RAEventDetailSheet: View {
                             Button(action: {
                                 if let addr = venue.address, !addr.isEmpty,
                                    let encoded = addr.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-                                   let url = URL(string: "https://www.google.com/maps/search/?api=1&query=\(encoded)") {
+                                   let url = URL(string: "https://maps.apple.com/?q=\(encoded)") {
                                     openURL(url)
                                 }
                             }) {
@@ -1955,10 +2232,10 @@ struct RAInviteSheet: View {
         sendingIds.insert(friend.id)
         Task {
             do {
-                let _ = try await APIClient.shared.sendChatMessage(text: eventMessage, toId: friend.id)
-                await MainActor.run { sendingIds.remove(friend.id); sentIds.insert(friend.id) }
+                _ = try await APIClient.shared.sendChatMessage(text: eventMessage, toId: friend.id)
+                await MainActor.run { sendingIds.remove(friend.id); _ = sentIds.insert(friend.id) }
             } catch {
-                await MainActor.run { sendingIds.remove(friend.id) }
+                await MainActor.run { _ = sendingIds.remove(friend.id) }
                 Log.e("[RAShare] Send failed: \(error)")
             }
         }
@@ -1969,13 +2246,138 @@ struct RAInviteSheet: View {
         sendingGroupIds.insert(gid)
         Task {
             do {
-                let _ = try await APIClient.shared.sendGroupMessage(groupID: gid, text: eventMessage)
-                await MainActor.run { sendingGroupIds.remove(gid); sentGroupIds.insert(gid) }
+                _ = try await APIClient.shared.sendGroupMessage(groupID: gid, text: eventMessage)
+                await MainActor.run { sendingGroupIds.remove(gid); _ = sentGroupIds.insert(gid) }
             } catch {
-                await MainActor.run { sendingGroupIds.remove(gid) }
+                await MainActor.run { _ = sendingGroupIds.remove(gid) }
                 Log.e("[RAShare] Group send failed: \(error)")
             }
         }
     }
 }
 
+// MARK: - Spot detail sheet (remote APISpot)
+
+struct SpotDetailSheet: View {
+    let spot: APIClient.APISpot
+    var userLocation: CLLocation?
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.openURL) var openURL
+
+    var body: some View {
+        ZStack {
+            Theme.bg.ignoresSafeArea()
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Hero
+                    ZStack(alignment: .topLeading) {
+                        ZStack {
+                            LinearGradient(
+                                colors: [Color(red: 0.20, green: 0.22, blue: 0.30), Color(red: 0.10, green: 0.12, blue: 0.18)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            )
+                            if !spot.imageUrl.isEmpty, let url = URL(string: spot.imageUrl) {
+                                CachedAsyncImage(url: url).scaledToFill()
+                            }
+                        }
+                        .frame(height: 240)
+                        .clipped()
+
+                        Button(action: { dismiss() }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 32, height: 32)
+                                .background(Color.black.opacity(0.5))
+                                .clipShape(Circle())
+                        }
+                        .padding(.top, 56).padding(.leading, 20)
+                    }
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(spot.name)
+                                    .font(.system(size: 26, weight: .bold))
+                                    .foregroundColor(Theme.text)
+                                if !spot.tagline.isEmpty {
+                                    Text(spot.tagline)
+                                        .font(.system(size: 15))
+                                        .foregroundColor(Theme.textMuted)
+                                }
+                            }
+                            Spacer()
+                            if let rating = spot.rating {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "star.fill")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(Theme.orange)
+                                    Text(String(format: "%.1f", rating))
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundColor(Theme.text)
+                                }
+                            }
+                        }
+
+                        if !spot.address.isEmpty {
+                            Button(action: {
+                                let encoded = spot.address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                                if let url = URL(string: "https://maps.apple.com/?q=\(encoded)") { openURL(url) }
+                            }) {
+                                HStack(spacing: 16) {
+                                    if let userLocation = userLocation {
+                                        HStack(spacing: 5) {
+                                            Image(systemName: "location.fill")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(Theme.textMuted)
+                                            Text(String(format: "%.1f km", SpotsRemoteStore.distanceKm(spot: spot, from: userLocation)))
+                                                .font(.system(size: 14, weight: .semibold))
+                                                .foregroundColor(Theme.text)
+                                        }
+                                    }
+                                    Text(spot.address)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(Theme.blue)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                    Spacer()
+                                    Image(systemName: "map").font(.system(size: 13)).foregroundColor(Theme.blue)
+                                }
+                            }
+                        }
+
+                        if !spot.description.isEmpty {
+                            Text(spot.description)
+                                .font(.system(size: 15))
+                                .foregroundColor(Theme.textMuted)
+                                .lineSpacing(5)
+                        }
+
+                        HStack(spacing: 16) {
+                            if !spot.websiteUrl.isEmpty, let url = URL(string: spot.websiteUrl) {
+                                Button(action: { openURL(url) }) {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "safari").font(.system(size: 13))
+                                        Text(L10n.t("website")).font(.system(size: 14, weight: .medium))
+                                    }
+                                    .foregroundColor(Theme.textMuted)
+                                }
+                            }
+                            if !spot.instagram.isEmpty,
+                               let url = URL(string: "https://instagram.com/\(spot.instagram)") {
+                                Button(action: { openURL(url) }) {
+                                    HStack(spacing: 5) {
+                                        Text(L10n.t("instagram_short")).font(.system(size: 14, weight: .heavy))
+                                        Text("@\(spot.instagram)").font(.system(size: 14, weight: .medium))
+                                    }
+                                    .foregroundColor(Theme.textMuted)
+                                }
+                            }
+                        }
+                    }
+                    .padding(24)
+                }
+            }
+        }
+    }
+}

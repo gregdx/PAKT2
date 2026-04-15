@@ -225,7 +225,7 @@ struct ChallengeResultView: View {
             Spacer()
             if group.mode == .competitive, let w = winner {
                 Text(L10n.t("the_winner")).font(.system(size: 13, weight: .heavy)).foregroundColor(Theme.green).tracking(4)
-                AvatarView(name: w.name, size: 100, color: Theme.green, uid: w.uid, isMe: appState.isMe(w))
+                UserAvatarButton(uid: w.uid, name: w.name, size: 100, color: Theme.green, isMe: appState.isMe(w), disabled: w.uid.isEmpty)
                     .environmentObject(appState)
                     .overlay(Circle().stroke(Theme.green.opacity(0.4), lineWidth: 3))
                 Text(w.name).font(.system(size: 34, weight: .black)).foregroundColor(Theme.text)
@@ -268,7 +268,7 @@ struct ChallengeResultView: View {
                                 Text("#\(rank)").font(.system(size: 14, weight: .bold)).foregroundColor(Theme.textMuted)
                             }
                         }
-                        AvatarView(name: member.name, size: 40, color: color, uid: member.uid, isMe: appState.isMe(member))
+                        UserAvatarButton(uid: member.uid, name: member.name, size: 40, color: color, isMe: appState.isMe(member), disabled: member.uid.isEmpty)
                             .environmentObject(appState)
                         Text(member.name).font(.system(size: 17, weight: .bold)).foregroundColor(Theme.text).lineLimit(1)
                         Spacer()
@@ -290,7 +290,7 @@ struct ChallengeResultView: View {
             if let best = bestDayMember {
                 Text(L10n.t("best_day")).font(.system(size: 13, weight: .heavy)).foregroundColor(Theme.textFaint).tracking(4)
                 Text(L10n.t("least_st_day")).font(.system(size: 17)).foregroundColor(Theme.textMuted).multilineTextAlignment(.center)
-                AvatarView(name: best.member.name, size: 72, color: Theme.green, uid: best.member.uid, isMe: appState.isMe(best.member))
+                UserAvatarButton(uid: best.member.uid, name: best.member.name, size: 72, color: Theme.green, isMe: appState.isMe(best.member), disabled: best.member.uid.isEmpty)
                     .environmentObject(appState)
                     .overlay(Circle().stroke(Theme.green.opacity(0.3), lineWidth: 3))
                 Text(best.member.name).font(.system(size: 24, weight: .bold)).foregroundColor(Theme.text)
@@ -309,7 +309,7 @@ struct ChallengeResultView: View {
             if let worst = worstDayMember {
                 Text(L10n.t("worst_day")).font(.system(size: 13, weight: .heavy)).foregroundColor(Theme.textFaint).tracking(4)
                 Text(L10n.t("most_st_day")).font(.system(size: 17)).foregroundColor(Theme.textMuted).multilineTextAlignment(.center)
-                AvatarView(name: worst.member.name, size: 72, color: Theme.red, uid: worst.member.uid, isMe: appState.isMe(worst.member))
+                UserAvatarButton(uid: worst.member.uid, name: worst.member.name, size: 72, color: Theme.red, isMe: appState.isMe(worst.member), disabled: worst.member.uid.isEmpty)
                     .environmentObject(appState)
                     .overlay(Circle().stroke(Theme.red.opacity(0.3), lineWidth: 3))
                 Text(worst.member.name).font(.system(size: 24, weight: .bold)).foregroundColor(Theme.text)
@@ -357,7 +357,7 @@ struct ChallengeResultView: View {
                 Text("\(L10n.t("harder_goal")) (\(formatTime(harderGoal))/day)")
                     .font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.textMuted)
                     .frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(RoundedRectangle(cornerRadius: 14).fill(.clear).liquidGlass(cornerRadius: 14))
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Theme.bgCard))
             }
             Spacer()
         }

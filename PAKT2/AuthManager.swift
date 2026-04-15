@@ -553,8 +553,14 @@ class AppleSignInDelegate2: NSObject, ASAuthorizationControllerDelegate {
 
 class AppleSignInPresentationContext2: NSObject, ASAuthorizationControllerPresentationContextProviding {
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows.first ?? ASPresentationAnchor()
+        // Apple Sign In is triggered from foreground UI, so a window scene
+        // always exists. We preconditon on that instead of falling back to
+        // the deprecated `UIWindow()` initialiser.
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first else {
+            preconditionFailure("Apple Sign In anchor requested with no active UIWindowScene")
+        }
+        return scene.windows.first ?? UIWindow(windowScene: scene)
     }
 }

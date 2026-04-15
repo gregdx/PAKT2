@@ -123,7 +123,7 @@ struct GroupChatView: View {
                         proxy.scrollTo("bottom", anchor: .bottom)
                     }
                 }
-                .onChange(of: chatMessages.count) { _ in
+                .onChange(of: chatMessages.count) { _, _ in
                     withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
                 }
                 .onTapGesture { isTextFocused = false }
@@ -149,7 +149,9 @@ struct GroupChatView: View {
                         }
                     }
                     .padding(.horizontal, 14).padding(.vertical, 8)
-                    .liquidGlass(cornerRadius: 20, style: .ultraThin)
+                    .background(
+                        Capsule().fill(Theme.bgCard)
+                    )
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
             }

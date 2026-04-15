@@ -12,9 +12,14 @@ class NetworkMonitor: ObservableObject {
     func start() {
         guard monitor == nil else { return }
         let m = NWPathMonitor()
-        m.pathUpdateHandler = { [weak self] path in
-            Task { @MainActor in
-                self?.isConnected = path.status == .satisfied
+        m.pathUpdateHandler = { path in
+            // Hoist the connected flag out of the (non-sendable) NWPath before
+            // hopping to the main actor. Capturing `self` weakly inside the
+            // Task keeps Swift 6 strict concurrency happy — capturing the
+            // outer `self` var across the Task boundary was the previous bug.
+            let connected = path.status == .satisfied
+            Task { @MainActor [weak self] in
+                self?.isConnected = connected
             }
         }
         m.start(queue: queue)

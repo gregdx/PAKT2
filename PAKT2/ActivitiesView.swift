@@ -681,7 +681,7 @@ struct ConversationView: View {
                         proxy.scrollTo("bottom", anchor: .bottom)
                     }
                 }
-                .onChange(of: chatMessages.count) { _ in
+                .onChange(of: chatMessages.count) { _, _ in
                     withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
                 }
                 .onTapGesture { isTextFocused = false }
@@ -899,8 +899,7 @@ struct ConversationView: View {
             // Avatar: only show on last message of a group from other person
             if !isMine {
                 if isLast {
-                    AvatarView(name: msg.fromName, size: 28, color: Theme.textMuted,
-                               uid: msg.fromId, isMe: false)
+                    UserAvatarButton(uid: msg.fromId, name: msg.fromName, size: 28, color: Theme.textMuted, isMe: false, disabled: msg.fromId.isEmpty)
                         .environmentObject(appState)
                 } else {
                     Spacer().frame(width: 28)
@@ -1135,15 +1134,11 @@ struct ActivityPickerSheet: View {
                         Button(action: { withAnimation(.easeInOut(duration: 0.2)) { pickerTab = tab } }) {
                             Text(tab.label)
                                 .font(.system(size: 14, weight: pickerTab == tab ? .semibold : .regular))
-                                .foregroundColor(pickerTab == tab ? Theme.bg : Theme.textMuted)
+                                .foregroundColor(pickerTab == tab ? .white : Theme.text)
                                 .padding(.vertical, 7).padding(.horizontal, 16)
-                                .background {
-                                    if pickerTab == tab {
-                                        RoundedRectangle(cornerRadius: 18).fill(Theme.text)
-                                    } else {
-                                        RoundedRectangle(cornerRadius: 18).fill(.clear).liquidGlass(cornerRadius: 18)
-                                    }
-                                }
+                                .background(
+                                    Capsule().fill(pickerTab == tab ? Theme.text : Theme.bgCard)
+                                )
                         }
                     }
                     Spacer()

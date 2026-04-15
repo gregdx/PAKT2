@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// Facebook-style user event creation sheet backed by POST /v1/events.
 ///
@@ -22,6 +23,10 @@ struct CreateEventSheetRemote: View {
     @State private var location = ""
     @State private var address = ""
     @State private var imageUrl = ""
+    @State private var photoItem: PhotosPickerItem? = nil
+    @State private var pickedImageData: Data? = nil
+    @State private var pickedImagePreview: UIImage? = nil
+    @State private var photoUploading = false
     @State private var visibility: Visibility = .friends
     @State private var invitedIDs: Set<String> = []
 
@@ -150,23 +155,80 @@ struct CreateEventSheetRemote: View {
 
     private var photoField: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TextField("Image URL (paste a link)", text: $imageUrl)
-                .keyboardType(.URL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled(true)
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                HStack(spacing: 10) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 18))
+                        .foregroundColor(Theme.text)
+                    Text(pickedImagePreview != nil ? "Change photo" : "Pick from library")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Theme.text)
+                    Spacer()
+                    if photoUploading {
+                        ProgressView().scaleEffect(0.8)
+                    } else if pickedImagePreview != nil {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(Theme.green)
+                    }
+                }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 14).fill(Theme.bgCard)
                 )
-            if let url = URL(string: imageUrl), !imageUrl.isEmpty {
+            }
+            .onChange(of: photoItem) { _, newItem in
+                guard let newItem else { return }
+                Task {
+                    if let data = try? await newItem.loadTransferable(type: Data.self),
+                       let img = UIImage(data: data) {
+                        let resized = img.jpegData(compressionQuality: 0.7) ?? data
+                        await MainActor.run {
+                            self.pickedImageData = resized
+                            self.pickedImagePreview = UIImage(data: resized)
+                            self.imageUrl = ""
+                        }
+                    }
+                }
+            }
+
+            if let preview = pickedImagePreview {
+                Image(uiImage: preview)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(height: 160)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            } else if let url = URL(string: imageUrl), !imageUrl.isEmpty {
                 CachedAsyncImage(url: url)
                     .scaledToFill()
-                    .frame(height: 120)
+                    .frame(height: 160)
                     .frame(maxWidth: .infinity)
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 14))
             }
+
+            DisclosureGroup("Paste a URL instead") {
+                TextField("https://…", text: $imageUrl)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14).fill(Theme.bgCard)
+                    )
+                    .onChange(of: imageUrl) { _, _ in
+                        if !imageUrl.isEmpty {
+                            pickedImageData = nil
+                            pickedImagePreview = nil
+                            photoItem = nil
+                        }
+                    }
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(Theme.textMuted)
         }
     }
 
@@ -400,6 +462,14 @@ struct CreateEventSheetRemote: View {
                 invitedUserIds: Array(invitedIDs),
                 imageUrl: imageUrl
             )
+            if let data = pickedImageData {
+                photoUploading = true
+                let b64 = data.base64EncodedString()
+                _ = try? await APIClient.shared.uploadEventPhoto(eventId: detail.id, base64: b64)
+                photoUploading = false
+                store.invalidateDetailCache(id: detail.id)
+                ImageCache.invalidateAll()
+            }
             onCreated?(detail)
             dismiss()
         } catch EventsRemoteStore.CreateEventError.missingTitle {
@@ -428,6 +498,13 @@ struct CreateEventSheetRemote: View {
         )
         do {
             let updated = try await APIClient.shared.updateEvent(id: ev.id, body: body)
+            if let data = pickedImageData {
+                photoUploading = true
+                let b64 = data.base64EncodedString()
+                _ = try? await APIClient.shared.uploadEventPhoto(eventId: ev.id, base64: b64)
+                photoUploading = false
+                ImageCache.invalidateAll()
+            }
             EventsRemoteStore.shared.invalidateDetailCache(id: ev.id)
             onUpdated?(updated)
             dismiss()

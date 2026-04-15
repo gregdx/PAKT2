@@ -19,7 +19,6 @@ struct ProfileView: View {
     @State private var profileRefreshTimer: Timer? = nil
     @State private var isTimerRunning = false
     @State private var darRefreshId: Int = 0
-    @State private var darReceivedMinutes: Int = 0
     @State private var openURLReceivedMinutes: Int = 0
     @State private var tappedDay: String? = nil
     @State private var myAchievements: Set<String> = []
@@ -143,7 +142,7 @@ struct ProfileView: View {
                         .padding(.top, 14)
                         .padding(.horizontal, 24)
 
-                    MyEventsSection()
+                    ProfileAgendaSection(userId: appState.currentUID)
                         .padding(.top, 18)
 
                     Spacer().frame(height: 80)
@@ -190,22 +189,11 @@ struct ProfileView: View {
             ScreenTimeManager.shared.syncToBackend(appState: appState)
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
-        .onPreferenceChange(TodayMinutesKey.self) { minutes in
-            darReceivedMinutes = minutes
-            // Diagnostic: log every fire, including 0, so we can distinguish
-            // "preference never fires" from "preference fires with 0 minutes"
-            Log.d("[PAKT Profile] TodayMinutesKey preference fired: \(minutes)")
-            guard minutes > 0 else { return }
-            let todayStr = ScreenTimeManager.dateFormatter.string(from: Date())
-            UserDefaults.standard.set(minutes, forKey: UDKey.todayMinutes)
-            UserDefaults.standard.set(todayStr, forKey: UDKey.todayDate)
-            stManager.updateProfileToday(minutes)
-            stManager.injectTodayIntoHistory(date: todayStr, minutes: minutes)
-            let social = stManager.categorySocial
-            // Use correctScore (direct assign) so DAR value can correct any
-            // previously-stored inflated backend value.
-            Task { try? await APIClient.shared.correctScore(minutes: minutes, socialMinutes: social > 0 ? social : nil, date: todayStr) }
-        }
+        // DAR IPC bridge removed 2026-04-14: DAR extensions are sandboxed and
+        // cannot reliably push data to the host (confirmed Apr 12). The DAM
+        // extension is now the sole source of truth; foreground syncs read
+        // from App Group / Keychain. DAR view is kept for visual rendering
+        // only (see PassthroughDAR.swift).
         .onPreferenceChange(SocialMinutesKey.self) { social in
             guard social > 0 else { return }
             stManager.updateCategorySocial(social)
@@ -262,7 +250,7 @@ struct ProfileView: View {
                 } onDismiss: { showGroupDetail = false }
             }
         }
-        .onChange(of: scenePhase) { phase in
+        .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 ScreenTimeManager.shared.loadProfileCache()
                 ScreenTimeManager.shared.syncToBackend(appState: appState)
@@ -272,40 +260,42 @@ struct ProfileView: View {
 
     // MARK: - Today score
 
-    private func formatMinutes(_ mins: Int) -> String {
-        if mins < 60 { return "\(mins)min" }
-        let h = mins / 60
-        let m = mins % 60
-        return m > 0 ? "\(h)h \(m)min" : "\(h)h"
-    }
-
-    private var todayScore: some View {
-        VStack(spacing: 6) {
-            Text(stManager.profileToday > 0 ? formatTime(stManager.profileToday) : "--")
-                .font(.system(size: 48, weight: .bold))
-                .foregroundColor(Theme.text)
-                .contentTransition(.numericText())
-            Text(L10n.t("today").uppercased())
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Theme.textFaint)
-                .tracking(1.5)
-            Button {
-                showReaderInfo = true
-            } label: {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 12))
-                    .foregroundColor(Theme.textFaint.opacity(0.4))
+        private var todayScore: some View {
+            VStack(spacing: 2) {
+                ZStack(alignment: .topTrailing) {
+                    Text(stManager.profileToday > 0 ? formatTime(stManager.profileToday) : "--")
+                        .font(.system(size: 48, weight: .bold))
+                        .foregroundColor(Theme.text)
+                        .contentTransition(.numericText())
+                        .padding(.horizontal, 22) // On donne de l'air pour le bouton info
+                    
+                    Button {
+                        showReaderInfo = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 10))
+                            .foregroundColor(Theme.textFaint.opacity(0.4))
+                            .offset(x: -4, y: 8) // Ajustement pour qu'il soit bien collé au chiffre
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                Text(L10n.t("today").uppercased())
+                    .font(.system(size: 12, weight: .semibold))
+                    // On utilise une opacité très basse pour matcher le style "glass"
+                    .foregroundColor(Theme.text.opacity(0.3))
+                    .tracking(1.5)
             }
-            .buttonStyle(.plain)
-            .alert("Screen Time Tracker", isPresented: $showReaderInfo) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("PAKT uses its own independent screen time tracker that runs in the background. Values may differ slightly from Apple's Screen Time in Settings, as we measure usage with our own system updated every 5 minutes.")
-            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16) // Encadré plus petit
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white.opacity(0.4))
+            )
+            .liquidGlass(cornerRadius: 16, style: .ultraThin)
+            .scaleEffect(statsAppeared ? 1.0 : 0.9)
+            .opacity(statsAppeared ? 1.0 : 0.0)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-    }
 
     // MARK: - Streak
 
@@ -340,33 +330,9 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Week avg / Month avg
+  
 
-    private var avgStats: some View {
-        HStack(spacing: 0) {
-            avgCell(minutes: stManager.profileWeekAvg, label: L10n.t("week_avg"))
-                .frame(maxWidth: .infinity)
-            Rectangle().fill(Theme.separator).frame(width: 0.5, height: 48)
-            avgCell(minutes: stManager.profileMonthAvg, label: L10n.t("month_avg"))
-                .frame(maxWidth: .infinity)
-        }
-        .padding(.horizontal, 24)
-    }
-
-    private func avgCell(minutes: Int, label: String) -> some View {
-        VStack(spacing: 4) {
-            Text(minutes > 0 ? formatTime(minutes) : "--")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundColor(Theme.text)
-            Text(label.uppercased())
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Theme.textFaint)
-                .tracking(1.0)
-        }
-        .frame(height: 56)
-    }
-
-    // MARK: - Ton poison (DAR-sourced, icons only — no info bleeding in)
+    // MARK: - YOUR FLAWS (DAR-sourced, icons only — no info bleeding in)
 
     private var poisonSection: some View {
         PassthroughDAR {
@@ -801,7 +767,7 @@ struct ProfileView: View {
                         .offset(x: 30, y: 30)
                 }
             }
-            .onChange(of: selectedPhoto) { newItem in
+            .onChange(of: selectedPhoto) { _, newItem in
                 Task {
                     if let data = try? await newItem?.loadTransferable(type: Data.self),
                        let img  = UIImage(data: data) {

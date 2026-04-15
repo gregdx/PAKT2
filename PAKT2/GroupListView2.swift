@@ -235,16 +235,12 @@ struct GroupsListView: View {
                 }) {
                     Text(filter == .groups ? L10n.t("groups") : L10n.t("friends_section"))
                         .font(.system(size: 15, weight: homeFilter == filter ? .semibold : .regular))
-                        .foregroundColor(homeFilter == filter ? Theme.bg : Theme.textMuted)
+                        .foregroundColor(homeFilter == filter ? .white : Theme.text)
                         .padding(.vertical, 8)
                         .padding(.horizontal, 16)
-                        .background {
-                            if homeFilter == filter {
-                                RoundedRectangle(cornerRadius: 20).fill(Theme.text)
-                            } else {
-                                RoundedRectangle(cornerRadius: 20).fill(.clear).liquidGlass(cornerRadius: 20)
-                            }
-                        }
+                        .background(
+                            Capsule().fill(homeFilter == filter ? Theme.text : Theme.bgCard)
+                        )
                 }
             }
             Spacer()
@@ -568,8 +564,7 @@ struct GroupCard: View {
                     // Pre-start: show member avatars in a row
                     HStack(spacing: -8) {
                         ForEach(Array(group.members.prefix(6).enumerated()), id: \.offset) { i, member in
-                            AvatarView(name: member.name, size: 40, color: Theme.textMuted,
-                                       uid: member.uid, isMe: appState.isMe(member))
+                            UserAvatarButton(uid: member.uid, name: member.name, size: 40, color: Theme.textMuted, isMe: appState.isMe(member), disabled: member.uid.isEmpty)
                                 .environmentObject(appState)
                                 .overlay(Circle().stroke(.ultraThinMaterial, lineWidth: 2))
                                 .zIndex(Double(6 - i))
@@ -653,8 +648,7 @@ struct GroupCard: View {
                         .fill(Theme.green.opacity(0.12))
                         .frame(width: avatarSize + 8, height: avatarSize + 8)
                 }
-                AvatarView(name: member.name, size: avatarSize, color: rank == 1 ? Theme.green : Theme.textMuted,
-                           uid: member.uid, isMe: appState.isMe(member))
+                UserAvatarButton(uid: member.uid, name: member.name, size: avatarSize, color: rank == 1 ? Theme.green : Theme.textMuted, isMe: appState.isMe(member), disabled: member.uid.isEmpty)
                     .environmentObject(appState)
                     .overlay(
                         Circle()
@@ -743,16 +737,12 @@ struct FriendDetailView: View {
                     }) {
                         Text(tab == .messages ? L10n.t("messages_tab") : L10n.t("profile_tab"))
                             .font(.system(size: 15, weight: activeTab == tab ? .semibold : .regular))
-                            .foregroundColor(activeTab == tab ? Theme.bg : Theme.textMuted)
+                            .foregroundColor(activeTab == tab ? .white : Theme.text)
                             .padding(.vertical, 8)
                             .padding(.horizontal, 16)
-                            .background {
-                                if activeTab == tab {
-                                    RoundedRectangle(cornerRadius: 20).fill(Theme.text)
-                                } else {
-                                    RoundedRectangle(cornerRadius: 20).fill(.clear).liquidGlass(cornerRadius: 20)
-                                }
-                            }
+                            .background(
+                                Capsule().fill(activeTab == tab ? Theme.text : Theme.bgCard)
+                            )
                     }
                 }
                 Spacer()
@@ -792,49 +782,84 @@ struct FriendRow: View {
         chatManager.hasUnreadMessages(from: friend.id)
     }
 
+    /// Friend's minutes today from AppState cached groups (populated by the
+    /// scores listener). 0 if we don't know yet.
+    private var friendToday: Int {
+        for g in appState.groups {
+            if let m = g.members.first(where: { $0.uid == friend.id }) {
+                return m.todayMinutes
+            }
+        }
+        return 0
+    }
+
+    /// Green if under 2h, orange 2-4h, red > 4h. Pure visual tint.
+    private var statusTint: Color {
+        if friendToday <= 0 { return Theme.textFaint }
+        if friendToday < 120 { return Theme.green }
+        if friendToday < 240 { return Theme.orange }
+        return Theme.red
+    }
+
+    private var subtitle: (String, Color) {
+        if let msg = lastMsg {
+            let raw = msg.text ?? msg.activityTitle ?? ""
+            let prefix = msg.isFromMe ? "\(L10n.t("you")): " : ""
+            return ("\(prefix)\(raw)", hasUnread ? Theme.text : Theme.textMuted)
+        }
+        return ("Say hi 👋", Theme.textFaint)
+    }
+
     var body: some View {
         HStack(spacing: 14) {
-            AvatarView(name: friend.firstName, size: 44, color: Theme.textMuted,
-                       uid: friend.id, isMe: false)
-                .environmentObject(appState)
+            ZStack(alignment: .bottomTrailing) {
+                FriendPhotoCircle(uid: friend.id, name: friend.firstName, size: 52)
+                Circle()
+                    .fill(statusTint)
+                    .frame(width: 14, height: 14)
+                    .overlay(Circle().strokeBorder(Theme.bgCard, lineWidth: 2.5))
+                    .offset(x: 2, y: 2)
+            }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(friend.firstName)
-                    .font(.system(size: 16, weight: hasUnread ? .bold : .semibold))
-                    .foregroundColor(Theme.text)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(friend.firstName)
+                        .font(.system(size: 16, weight: hasUnread ? .bold : .semibold))
+                        .foregroundColor(Theme.text)
+                    if friendToday > 0 {
+                        Text(formatTime(friendToday))
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(statusTint)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Capsule().fill(statusTint.opacity(0.14)))
+                    }
+                }
+                Text(subtitle.0)
+                    .font(.system(size: 13, weight: hasUnread ? .semibold : .regular))
+                    .foregroundColor(subtitle.1)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 6)
+
+            VStack(alignment: .trailing, spacing: 6) {
                 if let msg = lastMsg {
-                    Text(msg.isFromMe ? L10n.t("you") + ": \(msg.text ?? msg.activityTitle ?? "")" : (msg.text ?? msg.activityTitle ?? ""))
-                        .font(.system(size: 13, weight: hasUnread ? .medium : .regular))
-                        .foregroundColor(hasUnread ? Theme.text : Theme.textMuted)
-                        .lineLimit(1)
+                    Text(timeAgo(msg.createdAt))
+                        .font(.system(size: 11, weight: hasUnread ? .bold : .regular))
+                        .foregroundColor(hasUnread ? Theme.blue : Theme.textFaint)
+                }
+                if hasUnread {
+                    Circle()
+                        .fill(Theme.blue)
+                        .frame(width: 9, height: 9)
                 }
             }
-
-            Spacer()
-
-            if let msg = lastMsg {
-                Text(timeAgo(msg.createdAt))
-                    .font(.system(size: 12))
-                    .foregroundColor(Theme.textFaint)
-            }
-
-            if hasUnread {
-                Circle()
-                    .fill(Theme.blue)
-                    .frame(width: 10, height: 10)
-            }
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(Theme.textFaint)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white.opacity(0.4))
+            RoundedRectangle(cornerRadius: 16).fill(Theme.bgCard)
         )
-        .liquidGlass(cornerRadius: 16, style: .ultraThin)
     }
 }
 
@@ -883,7 +908,7 @@ struct JoinGroupSheet: View {
                         .multilineTextAlignment(.center)
                         .autocapitalization(.allCharacters)
                         .disableAutocorrection(true)
-                        .onChange(of: code) { v in code = v.uppercased(); errorMsg = nil }
+                        .onChange(of: code) { _, v in code = v.uppercased(); errorMsg = nil }
                     Rectangle().fill(Theme.border).frame(height: 1).padding(.horizontal, 40)
                 }
                 if let err = errorMsg {

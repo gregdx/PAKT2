@@ -487,7 +487,6 @@ class AppState: ObservableObject {
 
     func leaveGroup(_ group: Group) {
         PaktAnalytics.leaveGroup()
-        let uid = currentUID
         // Retirer localement
         groups.removeAll { $0.id == group.id }
         saveGroupsLocal()

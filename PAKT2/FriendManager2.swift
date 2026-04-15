@@ -106,7 +106,7 @@ final class FriendManager: ObservableObject {
         Task {
             do {
                 try await APIClient.shared.sendFriendRequest(toID: user.id)
-                await MainActor.run { self.outgoingIds.insert(user.id) }
+                await MainActor.run { _ = self.outgoingIds.insert(user.id) }
             } catch {
                 await MainActor.run { self.errorMessage = error.localizedDescription }
             }

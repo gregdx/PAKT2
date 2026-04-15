@@ -178,9 +178,11 @@ struct ChatEventCard: View {
             venueLng: d.venueLng,
             visibility: d.visibility,
             creatorId: d.creatorId,
+            category: d.category,
             myRsvp: d.myRsvp,
             friendsGoingCount: d.friendsGoingCount,
-            friendNames: d.friendNames
+            friendNames: d.friendNames,
+            friendIds: d.friendIds
         )
     }
 }

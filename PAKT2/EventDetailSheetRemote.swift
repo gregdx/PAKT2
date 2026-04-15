@@ -16,6 +16,8 @@ struct EventDetailSheetRemote: View {
     @State private var rsvpBusy = false
     @State private var showSharePicker = false
     @State private var showEditSheet = false
+    @State private var showDeleteConfirm = false
+    @State private var deleteInFlight = false
 
     var body: some View {
         NavigationStack {
@@ -69,10 +71,16 @@ struct EventDetailSheetRemote: View {
         // look.
         .presentationBackground {
             ZStack {
-                if #available(iOS 26, *) {
+                if #available(iOS 18, *) {
                     Rectangle()
-                        .fill(.clear)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 0))
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.08), Color.white.opacity(0.02)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                 } else {
                     Rectangle().fill(.ultraThinMaterial)
                 }
@@ -189,7 +197,7 @@ struct EventDetailSheetRemote: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "map.fill")
-                    Text("Open in Google Maps")
+                    Text("Open in Maps")
                         .font(.system(size: 14, weight: .semibold))
                 }
                 .foregroundColor(Theme.text)
@@ -206,97 +214,80 @@ struct EventDetailSheetRemote: View {
 
     private var friendsBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("\(effectiveFriendCount) friend\(effectiveFriendCount > 1 ? "s" : "") going")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(Theme.text)
-
-            if let detail = detail, !detail.friendAttendees.isEmpty {
-                VStack(spacing: 8) {
-                    ForEach(detail.friendAttendees) { friend in
-                        NavigationLink {
-                            FriendProfileView(
-                                user: AppUser(
-                                    id: friend.userId,
-                                    firstName: friend.username,
-                                    email: ""
-                                ),
-                                inline: true
-                            )
-                            .environmentObject(AppState.shared)
-                        } label: {
-                            HStack(spacing: 10) {
-                                Circle()
-                                    .fill(Theme.bgCard)
-                                    .frame(width: 32, height: 32)
-                                    .overlay(
-                                        Text(String(friend.username.prefix(1)).uppercased())
-                                            .font(.system(size: 14, weight: .bold))
-                                            .foregroundColor(Theme.textMuted)
-                                    )
+            let going = detail?.friendAttendees.filter { $0.status == "going" } ?? []
+            if !going.isEmpty {
+                HStack(spacing: 6) {
+                    Text("Who's going")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Theme.textMuted)
+                        .tracking(0.4)
+                    Text("\(going.count)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Theme.green)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Capsule().fill(Theme.green.opacity(0.14)))
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(going) { friend in
+                            VStack(spacing: 4) {
+                                friendAvatar(friend)
                                 Text(friend.username)
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.system(size: 11, weight: .semibold))
                                     .foregroundColor(Theme.text)
-                                Spacer()
-                                statusBadge(friend.status)
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(Theme.textFaint)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: 54)
                             }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             } else if !row.friendNames.isEmpty {
-                Text(row.friendNames.joined(separator: ", "))
-                    .font(.system(size: 13))
-                    .foregroundColor(Theme.textMuted)
+                HStack(spacing: 6) {
+                    Text("Who's going")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Theme.textMuted)
+                        .tracking(0.4)
+                }
+                HStack(spacing: -8) {
+                    ForEach(Array(row.friendNames.prefix(6).enumerated()), id: \.offset) { _, name in
+                        anonAvatar(name: name, color: Theme.green)
+                    }
+                }
             }
         }
     }
 
-    private func statusBadge(_ status: String) -> some View {
-        let label: String
-        let color: Color
-        switch status {
-        case "going":
-            label = "Y va"
-            color = Theme.green
-        case "interested":
-            label = "Interested"
-            color = Theme.orange
-        default:
-            label = status
-            color = Theme.textMuted
-        }
-        return Text(label)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundColor(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(
-                Capsule().fill(color.opacity(0.12))
+    @ViewBuilder
+    private func friendAvatar(_ friend: APIClient.APIEventFriendAttendee) -> some View {
+        NavigationLink {
+            FriendProfileView(
+                user: AppUser(
+                    id: friend.userId,
+                    firstName: friend.username,
+                    email: ""
+                ),
+                inline: true
             )
+            .environmentObject(AppState.shared)
+        } label: {
+            FriendPhotoCircle(uid: friend.userId, name: friend.username, size: 44)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func anonAvatar(name: String, color: Color) -> some View {
+        FriendPhotoCircle(uid: "", name: name, size: 36)
     }
 
     private var ctaRow: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                rsvpButton(
-                    label: currentRSVP == "interested" ? "Interested ✓" : "Interested",
-                    systemImage: "star",
-                    tint: Theme.orange,
-                    active: currentRSVP == "interested"
-                ) {
-                    Task { await toggleRSVP(status: "interested") }
-                }
-                rsvpButton(
-                    label: currentRSVP == "going" ? "Going ✓" : "Going",
-                    systemImage: "checkmark.circle",
-                    tint: Theme.green,
-                    active: currentRSVP == "going"
-                ) {
-                    Task { await toggleRSVP(status: "going") }
-                }
+            rsvpButton(
+                label: currentRSVP == "going" ? "You're going ✓" : "I'm going",
+                systemImage: "checkmark.circle.fill",
+                tint: Theme.green,
+                active: currentRSVP == "going"
+            ) {
+                Task { await toggleRSVP(status: "going") }
             }
             Button {
                 showSharePicker = true
@@ -332,10 +323,41 @@ struct EventDetailSheetRemote: View {
                     )
                 }
                 .buttonStyle(.plain)
+
+                Button(role: .destructive) { showDeleteConfirm = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "trash")
+                        Text("Delete event")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                    .foregroundColor(Theme.red)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Theme.red.opacity(0.12))
+                    )
+                }
+                .buttonStyle(.plain)
             }
         }
-        .disabled(rsvpBusy)
-        .opacity(rsvpBusy ? 0.6 : 1)
+        .disabled(rsvpBusy || deleteInFlight)
+        .opacity((rsvpBusy || deleteInFlight) ? 0.6 : 1)
+        .confirmationDialog(
+            "Delete this event?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    deleteInFlight = true
+                    let ok = await store.deleteEvent(id: row.id)
+                    deleteInFlight = false
+                    if ok { dismiss() }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 
     private var isCreator: Bool {
@@ -430,11 +452,6 @@ struct EventDetailSheetRemote: View {
 
     // MARK: - Helpers
 
-    private var effectiveFriendCount: Int {
-        if let detail = detail { return detail.friendAttendees.count }
-        return row.friendsGoingCount
-    }
-
     private func formatDateLong(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale.current
@@ -448,12 +465,11 @@ struct EventDetailSheetRemote: View {
         let label = (row.location.isEmpty ? row.title : row.location)
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
 
-        // Try Google Maps first, fall back to Apple Maps
-        let gmapsURL = URL(string: "comgooglemaps://?q=\(label)&center=\(lat),\(lng)&zoom=16")
-        if let gmapsURL, UIApplication.shared.canOpenURL(gmapsURL) {
-            UIApplication.shared.open(gmapsURL)
-        } else if let webURL = URL(string: "https://www.google.com/maps/search/?api=1&query=\(lat),\(lng)&query_place_id=\(label)") {
-            UIApplication.shared.open(webURL)
+        // Apple Maps universal link — opens the native Maps app on iOS and
+        // maps.apple.com in the browser otherwise. Centres on the venue and
+        // labels the pin with the location name.
+        if let url = URL(string: "https://maps.apple.com/?ll=\(lat),\(lng)&q=\(label)") {
+            UIApplication.shared.open(url)
         }
     }
 }

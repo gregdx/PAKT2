@@ -141,6 +141,8 @@ final class EventsRemoteStore: ObservableObject {
         from: Date? = nil,
         to: Date? = nil,
         friendsOnly: Bool = false,
+        categories: [String] = [],
+        past: Bool = false,
         limit: Int = 30
     ) async -> [APIClient.APIEventListRow] {
         do {
@@ -152,6 +154,8 @@ final class EventsRemoteStore: ObservableObject {
                 from: from,
                 to: to,
                 friendsOnly: friendsOnly,
+                categories: categories,
+                past: past,
                 limit: limit
             )
         } catch {
@@ -261,6 +265,7 @@ final class EventsRemoteStore: ObservableObject {
         do {
             try await api.deleteEvent(id: id)
             invalidateDetailCache(id: id)
+            ImageCache.invalidateAll()
             return true
         } catch {
             Log.d("[EventsRemoteStore] deleteEvent error: \(error)")

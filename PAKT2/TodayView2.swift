@@ -73,7 +73,7 @@ struct TodayView: View {
                     .background(
                         GeometryReader { geo in
                             Color.clear
-                                .onChange(of: geo.frame(in: .global).minY) { newY in
+                                .onChange(of: geo.frame(in: .global).minY) { _, newY in
                                     guard !isTransitioning else { return }
                                     if initialY == nil { initialY = newY }
                                     guard let start = initialY else { return }

@@ -1,4 +1,4 @@
-import DeviceActivity
+@preconcurrency import DeviceActivity
 import ExtensionKit
 import FamilyControls
 import ManagedSettings
@@ -11,10 +11,12 @@ struct TotalActivityReport: DeviceActivityReportExtension {
     // WeekChartScene is NOT registered because no host view currently uses
     // DeviceActivityReport(.init(rawValue: "weekChart")) — registering a scene
     // that is never rendered just wastes memory.
-    var body: some DeviceActivityReportScene {
-        // Only 2 scenes to stay under iOS's 5MB Jetsam limit.
-        // TodayScene now serves as the full profile scene (today + apps + 14d chart)
-        // when the host passes a 14-day filter.
+    // `nonisolated` opts this body out of the @MainActor inference that
+    // SwiftUI imposes on conforming types. Without it, Swift 6 flags the
+    // main-actor-isolated conformance of our scenes against the nonisolated
+    // `DeviceActivityReportScene` requirement. The scenes run inside the
+    // DeviceActivityReport extension process — no shared UI state to protect.
+    nonisolated var body: some DeviceActivityReportScene {
         TodayScene { info in TodayReportView(info: info) }
         CompactScene { info in CompactReportView(info: info) }
     }
@@ -269,7 +271,7 @@ struct TodayReportView: View {
                 }
             }
 
-            Text("TON POISON")
+            Text("YOUR FLAWS")
                 .font(.system(size: 11, weight: .heavy))
                 .tracking(3)
                 .foregroundColor(Color.secondary)

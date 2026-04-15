@@ -147,7 +147,7 @@ struct SettingsView: View {
                         .offset(x: 28, y: 28)
                 }
             }
-            .onChange(of: selectedPhoto) { newItem in
+            .onChange(of: selectedPhoto) { _, newItem in
                 Task {
                     if let data = try? await newItem?.loadTransferable(type: Data.self),
                        let img = UIImage(data: data) {
@@ -179,7 +179,7 @@ struct SettingsView: View {
                         .foregroundColor(Theme.text)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
-                        .onChange(of: newUsername) { v in
+                        .onChange(of: newUsername) { _, v in
                             let clean = v.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "_" }
                             if clean == appState.userName.lowercased() {
                                 usernameState = .idle; return
@@ -422,6 +422,14 @@ struct SettingsView: View {
                     .padding(.vertical, 8)
             }
 
+            Button(action: { simulateYesterdayRollover() }) {
+                Text("Simulate yesterday rollover (240min)")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Theme.text)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+
             if !debugLines.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(debugLines.enumerated()), id: \.offset) { _, line in
@@ -468,6 +476,29 @@ struct SettingsView: View {
         // Restart monitoring with fresh state
         stManager.startBackgroundMonitoring()
         debugLines = ["✓ Local cache reset (UD + AppGroup + Keychain)"]
+    }
+
+    /// Simule un rollover de minuit : écrit shared_history avec hier=240min
+    /// et déclenche un loadProfileCache pour drainer vers historyRaw.
+    /// Vérifie la barre "hier" dans le weekChart après tap.
+    private func simulateYesterdayRollover() {
+        let cal = Calendar.current
+        let df = ScreenTimeManager.dateFormatter
+        let yesterday = df.string(from: cal.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+        let ag = UserDefaults(suiteName: "group.com.PAKT2")
+        let existing = ag?.string(forKey: "shared_history") ?? ""
+        var byDate: [String: Int] = [:]
+        for entry in existing.split(separator: ",") {
+            let parts = entry.split(separator: ":")
+            guard parts.count == 2, let m = Int(parts[1]) else { continue }
+            byDate[String(parts[0])] = m
+        }
+        byDate[yesterday] = 240
+        let raw = byDate.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: ",")
+        ag?.set(raw, forKey: "shared_history")
+        ag?.synchronize()
+        stManager.loadProfileCache()
+        debugLines = ["✓ Wrote shared_history: \(yesterday)=240", "✓ Triggered loadProfileCache"]
     }
 
     private func deleteKeychain(key: String) {
@@ -667,7 +698,7 @@ struct SettingsView: View {
                         Toggle("", isOn: $notificationsOn)
                             .labelsHidden()
                             .tint(Theme.green)
-                            .onChange(of: notificationsOn) { on in
+                            .onChange(of: notificationsOn) { _, on in
                                 if on { NotificationService.shared.scheduleDailyReminder() }
                                 else  { NotificationService.shared.cancelDailyReminder() }
                             }

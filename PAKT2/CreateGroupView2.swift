@@ -52,7 +52,7 @@ struct CreateGroupView: View {
                         TextField("", text: $name)
                             .font(.system(size: 28, weight: .bold))
                             .foregroundColor(Theme.text)
-                            .onChange(of: name) { v in if v.count > 30 { name = String(v.prefix(30)) } }
+                            .onChange(of: name) { _, v in if v.count > 30 { name = String(v.prefix(30)) } }
                             .placeholder(when: name.isEmpty) {
                                 Text("The Sober Crew")
                                     .font(.system(size: 28, weight: .bold))

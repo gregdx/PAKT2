@@ -481,6 +481,39 @@ class APIClient {
         try await request(.GET, "/scores/group/\(groupID)?since=\(since)")
     }
 
+    /// Authenticated user's own daily scores since `since` (yyyy-MM-dd).
+    /// Powers the 7-day historical chart on ProfileView.
+    func getMyScores(since: String) async throws -> [APIScore] {
+        try await request(.GET, "/scores/me?since=\(since)")
+    }
+
+    // MARK: - Event photo
+
+    struct EventPhotoBody: Encodable {
+        let photoBase64: String
+        enum CodingKeys: String, CodingKey { case photoBase64 = "photo_base64" }
+    }
+
+    struct EventPhotoResponse: Decodable {
+        let photoBase64: String?
+        let uploaded: Bool?
+        enum CodingKeys: String, CodingKey {
+            case photoBase64 = "photo_base64"
+            case uploaded
+        }
+    }
+
+    /// Uploads a base64-encoded image for a user-created event. Creator-only.
+    @discardableResult
+    func uploadEventPhoto(eventId: String, base64: String) async throws -> EventPhotoResponse {
+        try await request(.PUT, "/eventphoto/\(eventId)", body: EventPhotoBody(photoBase64: base64))
+    }
+
+    /// Fetches the base64-encoded photo for an event (if any).
+    func getEventPhoto(eventId: String) async throws -> EventPhotoResponse {
+        try await request(.GET, "/eventphoto/\(eventId)")
+    }
+
     func postPending(deviceID: String, minutes: Int, socialMinutes: Int, date: String) async throws {
         let _: EmptyResponse = try await request(.POST, "/scores/pending", body: PendingBody(deviceId: deviceID, minutes: minutes, socialMinutes: socialMinutes, date: date))
     }
@@ -700,9 +733,12 @@ class APIClient {
         let venueLng: Double?
         let visibility: String
         let creatorId: String?
+        /// Heuristic-tagged by backend: clubbing, concert, course, sport, food, art, other.
+        let category: String?
         let myRsvp: String?
         let friendsGoingCount: Int
         let friendNames: [String]
+        let friendIds: [String]?
     }
 
     struct APIEventFriendAttendee: Decodable, Identifiable {
@@ -728,9 +764,11 @@ class APIClient {
         let venueLng: Double?
         let visibility: String
         let creatorId: String?
+        let category: String?
         let myRsvp: String?
         let friendsGoingCount: Int
         let friendNames: [String]
+        let friendIds: [String]?
         let friendAttendees: [APIEventFriendAttendee]
     }
 
@@ -744,6 +782,8 @@ class APIClient {
         from: Date? = nil,
         to: Date? = nil,
         friendsOnly: Bool = false,
+        categories: [String] = [],
+        past: Bool = false,
         limit: Int = 30,
         offset: Int = 0
     ) async throws -> [APIEventListRow] {
@@ -752,6 +792,8 @@ class APIClient {
         if let query = query, !query.isEmpty { params.append(("q", query)) }
         if let source = source { params.append(("source", source)) }
         if friendsOnly { params.append(("friends_only", "1")) }
+        if !categories.isEmpty { params.append(("categories", categories.joined(separator: ","))) }
+        if past { params.append(("past", "1")) }
         params.append(("limit", String(limit)))
         if offset > 0 { params.append(("offset", String(offset))) }
 
@@ -769,6 +811,134 @@ class APIClient {
 
     func getEvent(id: String) async throws -> APIEventDetail {
         try await request(.GET, "/events/\(id)")
+    }
+
+    // MARK: - Spots (dynamic near-you venue list)
+
+    struct APISpot: Decodable, Identifiable, Hashable {
+        let id: String
+        let name: String
+        let cityId: String
+        /// Backend slug: fitness | cafe | outdoor | wellness | sport (matches iOS VenueCategory).
+        let category: String
+        let lat: Double
+        let lng: Double
+        let address: String
+        let imageUrl: String
+        let source: String
+        let sourceId: String?
+        let tagline: String
+        let description: String
+        let websiteUrl: String
+        let instagram: String
+        let rating: Double?
+        let createdAt: Date?
+        let updatedAt: Date?
+        /// Server-computed km from user — populated only when the request
+        /// included `lat` + `lng`. Nil otherwise, so older screens that don't
+        /// pass a location keep the exact same payload they used to get.
+        let distanceKm: Double?
+    }
+
+    /// GET /v1/spots?city_id=&categories=&kinds=&q=&lat=&lng=&max_km=&limit=&offset=
+    /// Returns an array of spots for the given city, optionally filtered by
+    /// coarse category, fine `kind` (tagline — "Padel", "Tennis"…), free-text
+    /// query, and user location. When `userLat` + `userLng` are provided the
+    /// server sorts by ascending distance and populates `distanceKm`.
+    func listSpots(
+        cityId: String,
+        categories: [String] = [],
+        kinds: [String] = [],
+        query: String? = nil,
+        userLat: Double? = nil,
+        userLng: Double? = nil,
+        maxKm: Double? = nil,
+        limit: Int = 50,
+        offset: Int = 0
+    ) async throws -> [APISpot] {
+        var params: [(String, String)] = [("city_id", cityId)]
+        if !categories.isEmpty {
+            params.append(("categories", categories.joined(separator: ",")))
+        }
+        if !kinds.isEmpty {
+            params.append(("kinds", kinds.joined(separator: ",")))
+        }
+        if let query = query, !query.isEmpty {
+            params.append(("q", query))
+        }
+        if let lat = userLat, let lng = userLng {
+            params.append(("lat", String(lat)))
+            params.append(("lng", String(lng)))
+        }
+        if let maxKm = maxKm {
+            params.append(("max_km", String(maxKm)))
+        }
+        params.append(("limit", String(limit)))
+        if offset > 0 { params.append(("offset", String(offset))) }
+
+        let qs = params.map { key, value in
+            let encoded = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
+            return "\(key)=\(encoded)"
+        }.joined(separator: "&")
+
+        return try await request(.GET, "/spots?\(qs)")
+    }
+
+    func getSpot(id: String) async throws -> APISpot {
+        try await request(.GET, "/spots/\(id)")
+    }
+
+    // MARK: - Free activities catalogue
+
+    /// Matches pakt-api `/v1/activities` row shape. Replaces the hardcoded
+    /// `Activity.suggestions` array — see NearYouView.swift. `cityId` is
+    /// nullable on the server (universal vs. city-specific).
+    struct APIActivity: Decodable, Identifiable, Hashable {
+        let id: String
+        let title: String
+        let description: String
+        /// Backend slug: outdoor | food | creative | sport | chill | social.
+        let category: String
+        let cityId: String?
+        let imageUrl: String
+        let durationMinutes: Int?
+        let tags: [String]
+        let isFeatured: Bool
+        let createdAt: Date?
+    }
+
+    /// GET /v1/activities?city_id=&categories=&q=&featured=&limit=
+    /// All filters optional. `featured` is tri-state: nil = any, true/false
+    /// restrict accordingly. Categories are ANDed with `OR` semantics on the
+    /// server side (multi-select).
+    func listActivities(
+        cityId: String? = nil,
+        categories: [String] = [],
+        query: String? = nil,
+        featured: Bool? = nil,
+        limit: Int = 50
+    ) async throws -> [APIActivity] {
+        var params: [(String, String)] = []
+        if let cityId = cityId, !cityId.isEmpty {
+            params.append(("city_id", cityId))
+        }
+        if !categories.isEmpty {
+            params.append(("categories", categories.joined(separator: ",")))
+        }
+        if let query = query, !query.isEmpty {
+            params.append(("q", query))
+        }
+        if let featured = featured {
+            params.append(("featured", featured ? "1" : "0"))
+        }
+        params.append(("limit", String(limit)))
+
+        let qs = params.map { key, value in
+            let encoded = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
+            return "\(key)=\(encoded)"
+        }.joined(separator: "&")
+
+        return try await request(.GET, "/activities?\(qs)")
     }
 
     // MARK: - Event creation (step 3)

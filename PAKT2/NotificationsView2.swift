@@ -109,7 +109,7 @@ final class InvitationManager: NSObject, ObservableObject {
     }
 
     func accept(_ inv: GroupInvitation, appState: AppState) {
-        guard let uid = AuthManager.shared.currentUser?.id else { return }
+        guard AuthManager.shared.currentUser != nil else { return }
         DispatchQueue.main.async { self.pending.removeAll { $0.id == inv.id } }
         Task {
             do {

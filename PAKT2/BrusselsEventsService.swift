@@ -25,7 +25,7 @@ struct BrusselsEvent: Identifiable {
 
     var mapsURL: URL? {
         let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        return URL(string: "https://www.google.com/maps/search/?api=1&query=\(encoded)")
+        return URL(string: "https://maps.apple.com/?q=\(encoded)")
     }
 }
 

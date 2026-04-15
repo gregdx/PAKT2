@@ -219,9 +219,11 @@ struct UserEventsSectionView: View {
                 venueLng: detail.venueLng,
                 visibility: detail.visibility,
                 creatorId: detail.creatorId,
+                category: detail.category,
                 myRsvp: detail.myRsvp,
                 friendsGoingCount: detail.friendsGoingCount,
-                friendNames: detail.friendNames
+                friendNames: detail.friendNames,
+                friendIds: detail.friendIds
             )
         }
     }

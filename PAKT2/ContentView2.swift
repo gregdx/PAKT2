@@ -24,7 +24,7 @@ struct ContentView: View {
             }
         }
         .onReceive(AuthManager.shared.$currentUser) { user in
-            guard let user, appState.isOnboarded else { return }
+            guard user != nil, appState.isOnboarded else { return }
             Task {
                 await appState.syncFromBackend()
                 InvitationManager.shared.startListening()
@@ -51,10 +51,10 @@ struct ContentView: View {
                 }
             }
         }
-        .onChange(of: isDarkMode) { newValue in
+        .onChange(of: isDarkMode) { _, newValue in
             applyInterfaceStyle(newValue)
         }
-        .onChange(of: scenePhase) { phase in
+        .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 stManager.refreshAuthorizationStatus()
                 if stManager.isAuthorized {
@@ -185,17 +185,9 @@ struct ContentView: View {
 
         }
         .animation(.easeInOut(duration: 0.3), value: networkMonitor.isConnected)
-        .onPreferenceChange(TodayMinutesKey.self) { minutes in
-            Log.d("[PAKT Content] TodayMinutesKey preference fired: \(minutes)")
-            guard minutes > 0 else { return }
-            let todayStr = ScreenTimeManager.dateFormatter.string(from: Date())
-            UserDefaults.standard.set(minutes, forKey: UDKey.todayMinutes)
-            UserDefaults.standard.set(todayStr, forKey: UDKey.todayDate)
-            stManager.updateProfileToday(minutes)
-            stManager.injectTodayIntoHistory(date: todayStr, minutes: minutes)
-            stManager.updateLocalGroups(appState: appState)
-            stManager.syncToBackend(appState: appState)
-        }
+        // DAR IPC bridge removed 2026-04-14 — see ProfileView2.swift for rationale.
+        // DAM extension is now the sole source of today's minutes; foreground
+        // reads come from App Group / Keychain via ScreenTimeManager.loadProfileCache.
         .onPreferenceChange(SocialMinutesKey.self) { social in
             guard social > 0 else { return }
             stManager.updateCategorySocial(social)
