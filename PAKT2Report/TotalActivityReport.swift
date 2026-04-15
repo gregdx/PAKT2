@@ -1,19 +1,24 @@
-import DeviceActivity
+@preconcurrency import DeviceActivity
 import ExtensionKit
+import FamilyControls
 import ManagedSettings
 import SwiftUI
 
 @main
 struct TotalActivityReport: DeviceActivityReportExtension {
-    var body: some DeviceActivityReportScene {
+    // Minimal body — 2 scenes only to stay under iOS's 5MB Jetsam limit.
+    // Previously had 8 scenes which caused eviction on TestFlight.
+    // WeekChartScene is NOT registered because no host view currently uses
+    // DeviceActivityReport(.init(rawValue: "weekChart")) — registering a scene
+    // that is never rendered just wastes memory.
+    // `nonisolated` opts this body out of the @MainActor inference that
+    // SwiftUI imposes on conforming types. Without it, Swift 6 flags the
+    // main-actor-isolated conformance of our scenes against the nonisolated
+    // `DeviceActivityReportScene` requirement. The scenes run inside the
+    // DeviceActivityReport extension process — no shared UI state to protect.
+    nonisolated var body: some DeviceActivityReportScene {
         TodayScene { info in TodayReportView(info: info) }
         CompactScene { info in CompactReportView(info: info) }
-        CompactWeekScene { info in CompactReportView(info: info) }
-        CompactMonthScene { info in CompactReportView(info: info) }
-        WeekChartScene { data in ChartReportView(data: data) }
-        WeekAvgScene { avg in AvgReportView(minutes: avg, label: "week avg") }
-        MonthAvgScene { avg in AvgReportView(minutes: avg, label: "month avg") }
-        CategoriesScene { data in CategoriesReportView(data: data) }
     }
 }
 
@@ -91,6 +96,7 @@ private func writeHistoryToShared(_ raw: String) {
     keychainWrite(key: "shared_history", value: raw)
 }
 
+
 /// Poste une Darwin notification pour réveiller l'app principale immédiatement
 private func notifyMainApp() {
     let center = CFNotificationCenterGetDarwinNotifyCenter()
@@ -139,13 +145,31 @@ private func syncToBackendREST(minutes: Int? = nil, socialMinutes: Int? = nil) {
 }
 
 private func extractMinutes(from data: DeviceActivityResults<DeviceActivityData>) async -> Int {
-    var total: TimeInterval = 0
+    let result = await extractDiagnostics(from: data)
+    return result.minutes
+}
+
+/// Returns minutes (as max-of-items) + diagnostic counts. `DeviceActivityResults`
+/// sometimes yields multiple `DeviceActivityData` blobs for the same day
+/// (2026-04-10 observed: items=2 with ~528 + ~45 summing to an overcount).
+/// We take the max of per-item totals so noise/duplicate items don't inflate.
+private func extractDiagnostics(from data: DeviceActivityResults<DeviceActivityData>) async -> (minutes: Int, items: Int, segments: Int, maxSegMin: Int, perItemMinutes: [Int]) {
+    var items = 0
+    var totalSegments = 0
+    var maxSeg: TimeInterval = 0
+    var perItemMinutes: [Int] = []
     for await d in data {
+        items += 1
+        var itemTotal: TimeInterval = 0
         for await s in d.activitySegments {
-            total += s.totalActivityDuration
+            totalSegments += 1
+            itemTotal += s.totalActivityDuration
+            if s.totalActivityDuration > maxSeg { maxSeg = s.totalActivityDuration }
         }
+        perItemMinutes.append(Int(itemTotal / 60))
     }
-    return Int(total / 60)
+    let best = perItemMinutes.max() ?? 0
+    return (best, items, totalSegments, Int(maxSeg / 60), perItemMinutes)
 }
 
 // MARK: - Scene 1 : Today (grand affichage profil)
@@ -153,6 +177,15 @@ private func extractMinutes(from data: DeviceActivityResults<DeviceActivityData>
 struct TodayInfo {
     let minutes: Int
     let goal: Int
+    let debugItems: Int
+    let debugSegments: Int
+    let debugMaxSegMin: Int
+    let debugPerItem: [Int]
+    var apps: [AppUsageRow] = []
+    var days: [DayData] = []
+    var socialMinutes: Int = 0
+    var weekAvg: Int = 0
+    var monthAvg: Int = 0
 }
 
 struct TodayScene: DeviceActivityReportScene {
@@ -160,43 +193,92 @@ struct TodayScene: DeviceActivityReportScene {
     let content: (TodayInfo) -> TodayReportView
 
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> TodayInfo {
-        let minutes = await extractMinutes(from: data)
-        // Debug : marquer que le DAR a tourné via Keychain (App Group container est null)
-        let ts = ISO8601DateFormatter().string(from: Date())
-        keychainWrite(key: "dar_debug", value: "today:\(minutes) at \(ts)")
-        if minutes > 0 {
-            writeToShared(key: "shared_today", value: minutes)
-            syncToBackendREST(minutes: minutes)
-            notifyMainApp()
+        let cal = Calendar.current
+        let todayStr = dateFmt.string(from: Date())
+        let socialKW: Set<String> = ["instagram","tiktok","snapchat","twitter","facebook",
+            "messenger","whatsapp","telegram","discord","reddit","threads",
+            "linkedin","bereal","signal","youtube","pinterest"]
+
+        var appMap: [String: (minutes: Int, token: ApplicationToken?)] = [:]
+        var dayTotals: [String: Int] = [:]
+        var todayMinutes = 0
+        var socialMinutes = 0
+
+        for await d in data {
+            for await seg in d.activitySegments {
+                let segDay = dateFmt.string(from: seg.dateInterval.start)
+                let segMins = Int(seg.totalActivityDuration / 60)
+                dayTotals[segDay, default: 0] += segMins
+                guard segDay == todayStr else { continue }
+                todayMinutes += segMins
+                for await cat in seg.categories {
+                    for await app in cat.applications {
+                        let m = Int(app.totalActivityDuration / 60)
+                        guard m > 0 else { continue }
+                        let name = app.application.localizedDisplayName ?? "?"
+                        let bundle = (app.application.bundleIdentifier ?? "").lowercased()
+                        appMap[name] = (
+                            minutes: (appMap[name]?.minutes ?? 0) + m,
+                            token: app.application.token
+                        )
+                        if socialKW.contains(where: { name.lowercased().contains($0) || bundle.contains($0) }) {
+                            socialMinutes += m
+                        }
+                    }
+                }
+            }
         }
-        return TodayInfo(minutes: minutes, goal: goalMinutes())
+
+        // Keep the top 10 apps — matches MAX_TRACKED_APPS on the host so the
+        // full list can be auto-picked for DAM per-app tracking in one shot.
+        let apps = appMap.sorted { $0.value.minutes > $1.value.minutes }
+            .prefix(10)
+            .map { AppUsageRow(name: $0.key, minutes: $0.value.minutes, token: $0.value.token) }
+
+        var days: [DayData] = []
+        for i in (0..<7).reversed() {
+            let date = cal.date(byAdding: .day, value: -i, to: Date()) ?? Date()
+            let key = dateFmt.string(from: date)
+            days.append(DayData(label: dayFmt.string(from: date), date: key, minutes: dayTotals[key] ?? 0))
+        }
+        let nonZero = days.map(\.minutes).filter { $0 > 0 }
+        let weekAvg = nonZero.isEmpty ? 0 : nonZero.reduce(0, +) / nonZero.count
+
+        return TodayInfo(
+            minutes: todayMinutes, goal: goalMinutes(),
+            debugItems: 0, debugSegments: 0, debugMaxSegMin: 0, debugPerItem: [],
+            apps: apps, days: days, socialMinutes: socialMinutes, weekAvg: weekAvg
+        )
     }
 }
 
 struct TodayReportView: View {
     let info: TodayInfo
-    var over: Bool { info.minutes > info.goal }
-    @Environment(\.openURL) private var openURL
 
     var body: some View {
-        VStack(spacing: 4) {
-            Text(info.minutes > 0 ? formatST(info.minutes) : "--")
-                .font(.system(size: 42, weight: .bold))
-                .foregroundColor(info.minutes == 0 ? Color.primary : (over ? red : green))
-            Text("TODAY")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Color.secondary.opacity(0.5))
-                .tracking(1.0)
-        }
-        .preference(key: TodayMinutesKey.self, value: info.minutes)
-        .onAppear {
-            guard info.minutes > 0 else { return }
-            writeToShared(key: "shared_today", value: info.minutes)
-            syncToBackendREST(minutes: info.minutes)
-            if let url = URL(string: "pakt2://screentime?minutes=\(info.minutes)") {
-                openURL(url)
+        // "TON POISON" — just the 3 most-used app icons, no numbers.
+        VStack(spacing: 10) {
+            HStack(spacing: 18) {
+                ForEach(info.apps.prefix(3)) { app in
+                    if let token = app.token {
+                        Label(token).labelStyle(.iconOnly)
+                            .frame(width: 44, height: 44)
+                    } else {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.secondary.opacity(0.12))
+                            .frame(width: 44, height: 44)
+                    }
+                }
             }
+
+            Text("YOUR FLAWS")
+                .font(.system(size: 11, weight: .heavy))
+                .tracking(3)
+                .foregroundColor(Color.secondary)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .preference(key: TodayMinutesKey.self, value: info.minutes)
     }
 }
 
@@ -208,7 +290,7 @@ struct CompactScene: DeviceActivityReportScene {
 
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> TodayInfo {
         let minutes = await extractMinutes(from: data)
-        return TodayInfo(minutes: minutes, goal: goalMinutes())
+        return TodayInfo(minutes: minutes, goal: goalMinutes(), debugItems: 0, debugSegments: 0, debugMaxSegMin: 0, debugPerItem: [])
     }
 }
 
@@ -234,7 +316,7 @@ struct CompactWeekScene: DeviceActivityReportScene {
         let daily = await minutesPerDay(from: data)
         let withData = daily.values.filter { $0 > 0 }
         let avg = withData.isEmpty ? 0 : withData.reduce(0, +) / withData.count
-        return TodayInfo(minutes: avg, goal: goalMinutes())
+        return TodayInfo(minutes: avg, goal: goalMinutes(), debugItems: 0, debugSegments: 0, debugMaxSegMin: 0, debugPerItem: [])
     }
 }
 
@@ -248,7 +330,7 @@ struct CompactMonthScene: DeviceActivityReportScene {
         let daily = await minutesPerDay(from: data)
         let withData = daily.values.filter { $0 > 0 }
         let avg = withData.isEmpty ? 0 : withData.reduce(0, +) / withData.count
-        return TodayInfo(minutes: avg, goal: goalMinutes())
+        return TodayInfo(minutes: avg, goal: goalMinutes(), debugItems: 0, debugSegments: 0, debugMaxSegMin: 0, debugPerItem: [])
     }
 }
 
@@ -330,6 +412,8 @@ func minutesPerDay(from data: DeviceActivityResults<DeviceActivityData>) async -
     var result: [String: Int] = [:]
     for await d in data {
         for await seg in d.activitySegments {
+            // Use segment-level duration only (matches Apple Settings).
+            // See extractMinutes for the rationale on dropping category max().
             let m = Int(seg.totalActivityDuration / 60)
             let key = dateFmt.string(from: seg.dateInterval.start)
             result[key, default: 0] += m
@@ -454,6 +538,17 @@ struct CategoriesScene: DeviceActivityReportScene {
         return socialMinutes
     }
 }
+
+// MARK: - Shared types for TodayScene full profile rendering
+
+struct AppUsageRow: Identifiable {
+    let id = UUID()
+    let name: String
+    let minutes: Int
+    let token: ApplicationToken?
+}
+
+// FullProfileScene removed — folded into TodayScene to stay under Jetsam limit.
 
 struct CategoriesReportView: View {
     let data: Int

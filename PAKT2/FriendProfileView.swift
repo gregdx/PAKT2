@@ -93,43 +93,7 @@ struct FriendProfileView: View {
                         FriendEventsSection(userId: user.id)
                             .padding(.top, 28)
 
-                    // Achievements — compact, only unlocked
-                    if !isLoading && !unlockedIds.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                SectionTitle(text: L10n.t("medals"))
-                                Spacer()
-                                Text("\(unlockedIds.count)/\(AchievementDef.all.count)")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(Theme.textFaint)
-                            }
-                            .padding(.horizontal, 24)
-
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 12) {
-                                    ForEach(AchievementDef.all.filter { unlockedIds.contains($0.id) }) { achievement in
-                                        VStack(spacing: 6) {
-                                            ZStack {
-                                                Circle()
-                                                    .fill(achievement.color.opacity(0.15))
-                                                    .frame(width: 40, height: 40)
-                                                Image(systemName: achievement.icon)
-                                                    .font(.system(size: 16, weight: .medium))
-                                                    .foregroundColor(achievement.color)
-                                            }
-                                            Text(achievement.name)
-                                                .font(.system(size: 11, weight: .semibold))
-                                                .foregroundColor(Theme.text)
-                                                .lineLimit(1)
-                                                .frame(width: 64)
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal, 24)
-                            }
-                        }
-                        .padding(.top, 20)
-                    }
+                    // Achievements section removed per user request (April 12 2026)
 
                         Spacer().frame(height: 60)
                     }

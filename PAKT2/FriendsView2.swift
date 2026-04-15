@@ -169,7 +169,7 @@ struct FriendsView: View {
                     TextField(L10n.t("username_ph"), text: $searchQuery)
                         .font(.system(size: 17)).foregroundColor(Theme.text)
                         .autocapitalization(.none).disableAutocorrection(true)
-                        .onChange(of: searchQuery) { val in
+                        .onChange(of: searchQuery) { _, val in
                             Task { await firebase.searchByUsername(val) }
                         }
                     if !searchQuery.isEmpty {

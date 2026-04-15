@@ -123,7 +123,7 @@ struct GroupChatView: View {
                         proxy.scrollTo("bottom", anchor: .bottom)
                     }
                 }
-                .onChange(of: chatMessages.count) { _ in
+                .onChange(of: chatMessages.count) { _, _ in
                     withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
                 }
                 .onTapGesture { isTextFocused = false }
@@ -149,7 +149,9 @@ struct GroupChatView: View {
                         }
                     }
                     .padding(.horizontal, 14).padding(.vertical, 8)
-                    .liquidGlass(cornerRadius: 20, style: .ultraThin)
+                    .background(
+                        Capsule().fill(Theme.bgCard)
+                    )
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
             }
@@ -323,27 +325,44 @@ struct GroupChatView: View {
                         .padding(.bottom, 2)
                         .onTapGesture { openMemberProfile(msg.fromId, name: msg.fromName) }
                 }
-                EventMessageCard(text: msg.text ?? "", isMine: isMine)
-                    .contextMenu {
-                        if let text = msg.text {
+                if let evId = msg.eventId {
+                    ChatEventCard(eventId: evId, isMine: isMine)
+                        .contextMenu {
                             Button {
-                                UIPasteboard.general.string = text
+                                reportedMessageId = msg.id
+                                showReportSheet = true
                             } label: {
-                                Label(L10n.t("copy"), systemImage: "doc.on.doc")
+                                Label(L10n.t("report"), systemImage: "exclamationmark.triangle")
+                            }
+                            Button(role: .destructive) {
+                                messageToDelete = msg
+                            } label: {
+                                Label(L10n.t("delete"), systemImage: "trash")
                             }
                         }
-                        Button {
-                            reportedMessageId = msg.id
-                            showReportSheet = true
-                        } label: {
-                            Label(L10n.t("report"), systemImage: "exclamationmark.triangle")
+                } else {
+                    EventMessageCard(text: msg.text ?? "", isMine: isMine)
+                        .contextMenu {
+                            if let text = msg.text {
+                                Button {
+                                    UIPasteboard.general.string = text
+                                } label: {
+                                    Label(L10n.t("copy"), systemImage: "doc.on.doc")
+                                }
+                            }
+                            Button {
+                                reportedMessageId = msg.id
+                                showReportSheet = true
+                            } label: {
+                                Label(L10n.t("report"), systemImage: "exclamationmark.triangle")
+                            }
+                            Button(role: .destructive) {
+                                messageToDelete = msg
+                            } label: {
+                                Label(L10n.t("delete"), systemImage: "trash")
+                            }
                         }
-                        Button(role: .destructive) {
-                            messageToDelete = msg
-                        } label: {
-                            Label(L10n.t("delete"), systemImage: "trash")
-                        }
-                    }
+                }
             }
 
             if !isMine { Spacer(minLength: 40) }

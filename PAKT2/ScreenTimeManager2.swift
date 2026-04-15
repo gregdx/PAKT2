@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import FamilyControls
 import DeviceActivity
+import ManagedSettings
 import Security
 
 struct ProfileDayData: Identifiable {
@@ -28,15 +29,191 @@ final class ScreenTimeManager: ObservableObject {
     // MARK: - Profile stats cache (alimenté par URL schemes depuis l'extension)
 
     @Published var profileToday: Int = 0
+    private var displayedToday: Int = 0  // Never decreases within a session
     @Published var profileWeekAvg: Int = 0
     @Published var profileMonthAvg: Int = 0
     @Published var profileHistory: [ProfileDayData] = []
     @Published var categorySocial: Int = 0
+    @Published var perAppMinutes: [(index: Int, minutes: Int)] = []
     @Published var trackedAppMinutes: Int = 0  // Per-app tracking total for scope=.apps groups
     @Published var currentStreak: Int = 0
     @Published var memberStreaks: [String: Int] = [:]
     @Published var memberLastSync: [String: Date] = [:]
+    @Published var darDebugInfo: String = "never"
+    @Published var todaySourceInfo: String = "none"
+    @Published var familySelection: FamilyActivitySelection = ScreenTimeManager.loadSelection()
+
+    // MARK: - Per-app tracking (for scope="apps" groups + Profile breakdown)
+    //
+    // The user can additionally pick up to MAX_TRACKED_APPS individual apps
+    // (Instagram, TikTok, etc.). The Monitor schedules a dedicated
+    // DeviceActivityEvent per picked app so DAM fires per-app thresholds
+    // and writes minutes into `app{i}_today` in App Group.
+    @Published var trackedAppsSelection: FamilyActivitySelection = ScreenTimeManager.loadTrackedAppsSelection()
+
+    /// Ordered snapshot of the tokens from trackedAppsSelection. The index in
+    /// this array maps 1-to-1 with the `app{i}_today` keys written by the
+    /// Monitor extension. Persisted so host + extension agree on index.
+    @Published private(set) var trackedAppsTokens: [ApplicationToken] = ScreenTimeManager.loadTrackedAppsTokens()
+
+    struct PerAppEntry: Identifiable {
+        let index: Int
+        let token: ApplicationToken
+        let minutes: Int
+        var id: Int { index }
+    }
+
+    /// Calibrated per-app minutes for today, sorted desc, zeros filtered out.
+    @Published var perAppBreakdown: [PerAppEntry] = []
+
+    static let MAX_TRACKED_APPS = 10
     static let streakGoalMinutes = 180
+
+    private static let trackedAppsKey = "pakt_tracked_apps_selection"
+    private static let trackedAppsTokensKey = "pakt_tracked_apps_tokens"
+
+    static func loadTrackedAppsSelection() -> FamilyActivitySelection {
+        guard let data = UserDefaults.standard.data(forKey: trackedAppsKey),
+              let decoded = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else {
+            return FamilyActivitySelection()
+        }
+        return decoded
+    }
+
+    static func loadTrackedAppsTokens() -> [ApplicationToken] {
+        guard let data = UserDefaults.standard.data(forKey: trackedAppsTokensKey),
+              let decoded = try? JSONDecoder().decode([ApplicationToken].self, from: data) else {
+            return []
+        }
+        return decoded
+    }
+
+    /// Save a new per-app selection. Caps at MAX_TRACKED_APPS to stay within
+    /// DAM's 20-events-per-schedule budget. Clears stale per-app counters and
+    /// restarts background monitoring so the Monitor picks up the new list.
+    func saveTrackedAppsSelection(_ selection: FamilyActivitySelection) {
+        let tokens = Array(selection.applicationTokens.prefix(Self.MAX_TRACKED_APPS))
+        let trimmed = FamilyActivitySelection()
+        var trimmedMut = trimmed
+        trimmedMut.applicationTokens = Set(tokens)
+
+        trackedAppsSelection = trimmedMut
+        trackedAppsTokens = tokens
+
+        if let sdata = try? JSONEncoder().encode(trimmedMut) {
+            UserDefaults.standard.set(sdata, forKey: Self.trackedAppsKey)
+            sharedUD?.set(sdata, forKey: Self.trackedAppsKey)
+        }
+        if let tdata = try? JSONEncoder().encode(tokens) {
+            UserDefaults.standard.set(tdata, forKey: Self.trackedAppsTokensKey)
+            sharedUD?.set(tdata, forKey: Self.trackedAppsTokensKey)
+        }
+        sharedUD?.set(tokens.count, forKey: "tracked_app_count")
+
+        // Wipe per-app counters so thxe new selection starts fresh.
+        for i in 0..<Self.MAX_TRACKED_APPS {
+            sharedUD?.removeObject(forKey: "app\(i)_today")
+            sharedUD?.removeObject(forKey: "app\(i)_today_date")
+            for b in 0..<12 {
+                sharedUD?.removeObject(forKey: "app\(i)_block_\(b)")
+                sharedUD?.removeObject(forKey: "app\(i)_block_\(b)_date")
+            }
+        }
+        sharedUD?.synchronize()
+
+        perAppBreakdown = []
+        Log.d("[ScreenTime] Saved tracked apps selection: \(tokens.count) apps")
+        startBackgroundMonitoring(force: true)
+    }
+
+
+    // MARK: - Calibration factor
+    //
+    // Apple's DeviceActivityMonitor is known to overcount real usage by ~30%
+    // (FB15103784 + multiple iOS 17/18/26 threads). The bug has several causes:
+    // premature threshold fires, Safari double-counting, cross-device bleed
+    // even with "Share Across Devices" off, and time counted while the device
+    // is locked / on Home screen. Apps like Opal get closer to reality by
+    // filtering out passive time, but DAM exposes no such filter to us.
+    //
+    // As a pragmatic workaround, every raw minute read from App Group / Keychain
+    // is multiplied by this factor before being surfaced to the UI and the
+    // backend sync. The default 0.70 matches the 70-78% overcount we measured
+    // on Apr 10. Users can tune it in Settings if their particular phone
+    // is closer to Apple's native figure.
+    static let calibrationKey = "pakt_calibration_factor"
+    static var calibrationFactor: Double {
+        let raw = UserDefaults.standard.double(forKey: calibrationKey)
+        // clamp to [0.30, 1.00] so a typo can't zero out scores or inflate them
+        if raw <= 0 { return 0.70 }
+        return min(max(raw, 0.30), 1.00)
+    }
+    static func setCalibrationFactor(_ value: Double) {
+        let clamped = min(max(value, 0.30), 1.00)
+        UserDefaults.standard.set(clamped, forKey: calibrationKey)
+        // Mirror into App Group so the DAM extension (which can't read the
+        // main bundle's UserDefaults.standard) picks up the same factor and
+        // pre-calibrates every write to shared_today.
+        UserDefaults(suiteName: "group.com.PAKT2")?.set(clamped, forKey: calibrationKey)
+    }
+    /// Post-2026-04-14 DAM-only refactor: the DAM extension already applies
+    /// the calibration factor before writing shared_today to App Group /
+    /// Keychain, so values read from those sources are already corrected.
+    /// `calibrate()` is kept as a safety net for (a) legacy pre-refactor
+    /// values that might linger in Keychain, and (b) foreground interpolation
+    /// of raw per-block values. Treat as idempotent-ish: because the factor
+    /// is <1, applying it twice only over-compensates and never inflates.
+    private func calibrate(_ minutes: Int) -> Int {
+        guard minutes > 0 else { return 0 }
+        return Int((Double(minutes) * Self.calibrationFactor).rounded())
+    }
+
+    // MARK: - FamilyActivitySelection persistence (for DeviceActivityMonitor thresholds)
+
+    private static let selectionKey = "pakt_family_selection"
+
+    static func loadSelection() -> FamilyActivitySelection {
+        guard let data = UserDefaults.standard.data(forKey: selectionKey),
+              let decoded = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else {
+            return FamilyActivitySelection(includeEntireCategory: true)
+        }
+        return decoded
+    }
+
+    func saveFamilySelection(_ selection: FamilyActivitySelection) {
+        familySelection = selection
+        if let data = try? JSONEncoder().encode(selection) {
+            UserDefaults.standard.set(data, forKey: Self.selectionKey)
+            UserDefaults(suiteName: "group.com.PAKT2")?.set(data, forKey: Self.selectionKey)
+        }
+        // Clear stale threshold values from previous selection so the new
+        // selection can start fresh (old max() logic would block lower values).
+        profileToday = 0
+        UserDefaults.standard.removeObject(forKey: UDKey.todayMinutes)
+        UserDefaults.standard.removeObject(forKey: UDKey.todayDate)
+        sharedUD?.removeObject(forKey: "shared_today")
+        sharedUD?.removeObject(forKey: "shared_today_date")
+        keychainDelete("shared_today")
+        keychainDelete("shared_today_date")
+        Log.d("[ScreenTime] Saved family selection: apps=\(selection.applicationTokens.count) cats=\(selection.categoryTokens.count), cleared caches")
+        // Force restart — user explicitly changed selection, bypass debounce
+        startBackgroundMonitoring(force: true)
+    }
+
+    private func keychainDelete(_ key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+            kSecAttrAccessGroup as String: AppConfig.keychainGroup
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    var hasFamilySelection: Bool {
+        !familySelection.applicationTokens.isEmpty
+            || !familySelection.categoryTokens.isEmpty
+            || !familySelection.webDomainTokens.isEmpty
+    }
 
     private var syncTask: Task<Void, Never>?
     private var fetchCumulativeTask: Task<Void, Never>?
@@ -45,12 +222,112 @@ final class ScreenTimeManager: ObservableObject {
 
     init() {
         isAuthorized = center.authorizationStatus == .approved
+        // Mirror the current calibration factor into App Group so the DAM
+        // extension picks it up on its next event fire (extension can't read
+        // the main bundle's UserDefaults.standard).
+        let cf = Self.calibrationFactor
+        UserDefaults(suiteName: "group.com.PAKT2")?.set(cf, forKey: Self.calibrationKey)
+        runMigrationV2IfNeeded()
+        runMigrationV3IfNeeded()
+        runMigrationV4ReaderReset()
+        runMigrationV5Inclusion()
         loadProfileCache()
         registerDarwinNotification()
+        Task { await self.refreshHistoryFromBackend() }
+    }
+    
+    
+    /// Migration v5: Force le nouveau tracking "Total Device" sans filtre []
+        /// Cela permet d'inclure Safari et les apps non-sélectionnées pour supprimer l'écart de 25min.
+        private func runMigrationV5Inclusion() {
+            let key = "pakt_migration_v5_total_inclusion"
+            // Si la migration a déjà été faite, on ne fait rien
+            guard !UserDefaults.standard.bool(forKey: key) else { return }
+            
+            Log.d("[PAKT Migration v5] Reset des données pour passage au tracking total")
+            
+            // 1. On nettoie les anciennes données qui pourraient être fausses
+            let today = Self.dateFormatter.string(from: Date())
+            sharedUD?.set(0, forKey: "shared_today")
+            sharedUD?.set(today, forKey: "shared_today_date")
+            sharedUD?.synchronize()
+            
+            UserDefaults.standard.set(0, forKey: UDKey.todayMinutes)
+            UserDefaults.standard.set(today, forKey: UDKey.todayDate)
+            
+            // 2. On force le redémarrage immédiat du monitoring avec les listes vides []
+            // Cela appelle la version corrigée de startBackgroundMonitoring
+            self.startBackgroundMonitoring(force: true)
+            
+            // 3. On marque la migration comme terminée
+            UserDefaults.standard.set(true, forKey: key)
+        }
+
+    /// One-shot migration v4: purge ALL stale screen time data when switching
+    /// to the new Opal-style 12-block reader. Old DAM/DAR values are inaccurate
+    /// and must not contaminate the new reader's fresh start.
+    private func runMigrationV4ReaderReset() {
+        let key = "pakt_migration_v4_reader_reset"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        // Purge everything
+        let today = Self.dateFormatter.string(from: Date())
+        sharedUD?.set(0, forKey: "shared_today")
+        sharedUD?.set(today, forKey: "shared_today_date")
+        sharedUD?.removeObject(forKey: "st_history")
+        sharedUD?.removeObject(forKey: "shared_history")
+        sharedUD?.synchronize()
+        UserDefaults.standard.set(0, forKey: UDKey.todayMinutes)
+        UserDefaults.standard.set(today, forKey: UDKey.todayDate)
+        UserDefaults.standard.removeObject(forKey: UDKey.historyRaw)
+        UserDefaults.standard.removeObject(forKey: UDKey.weekAvg)
+        UserDefaults.standard.removeObject(forKey: UDKey.monthAvg)
+        UserDefaults.standard.removeObject(forKey: "pakt_week_history")
+        keychainDelete("shared_today")
+        keychainDelete("shared_today_date")
+        keychainDelete("shared_history")
+        UserDefaults.standard.set(true, forKey: key)
+        Log.d("[PAKT Migration v4] Purged all stale data for new 12-block reader")
+    }
+
+    /// One-shot migration v3: wipe stale shared_today after the brief 3-tier
+    /// DAM experiment inflated it. The 3-tier config (3 parallel schedules)
+    /// caused Apple to overcount ~18%, and the inflated value sticks via max()
+    /// even after reverting to single-tier. This migration wipes it so the
+    /// next cascade writes the correct current value.
+    private func runMigrationV3IfNeeded() {
+        let migrationKey = "pakt_migration_v3_clear_tier_experiment"
+        guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
+        sharedUD?.removeObject(forKey: "shared_today")
+        sharedUD?.removeObject(forKey: "shared_today_date")
+        sharedUD?.synchronize()
+        keychainDelete("shared_today")
+        keychainDelete("shared_today_date")
+        UserDefaults.standard.set(true, forKey: migrationKey)
+        Log.d("[PAKT Migration v3] Cleared shared_today inflated by brief 3-tier DAM experiment")
+    }
+
+    /// One-shot migration: wipe stale shared_today values previously written
+    /// by the Monitor extension (which overcounted ~70% per Apple-confirmed
+    /// bug). DAR is now the sole source of truth via TodayMinutesKey bridge.
+    private func runMigrationV2IfNeeded() {
+        let migrationKey = "pakt_migration_v2_dar_authoritative"
+        guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
+        sharedUD?.removeObject(forKey: "shared_today")
+        sharedUD?.removeObject(forKey: "shared_today_date")
+        sharedUD?.removeObject(forKey: "shared_social")
+        sharedUD?.removeObject(forKey: "shared_social_date")
+        sharedUD?.synchronize()
+        keychainDelete("shared_today")
+        keychainDelete("shared_today_date")
+        keychainDelete("shared_social")
+        keychainDelete("shared_social_date")
+        UserDefaults.standard.set(true, forKey: migrationKey)
+        Log.d("[PAKT Migration v2] Cleared stale shared_today from Keychain + App Group")
     }
 
     /// Écoute les Darwin notifications postées par les extensions DAR/Monitor
     /// pour relire immédiatement les données du App Group / Keychain
+    private var lastDarwinNotif: Date = .distantPast
     private func registerDarwinNotification() {
         let center = CFNotificationCenterGetDarwinNotifyCenter()
         let observer = Unmanaged.passUnretained(self).toOpaque()
@@ -61,7 +338,12 @@ final class ScreenTimeManager: ObservableObject {
                 guard let observer else { return }
                 let mgr = Unmanaged<ScreenTimeManager>.fromOpaque(observer).takeUnretainedValue()
                 DispatchQueue.main.async {
-                    Log.d("[PAKT] Darwin notification received — reloading profile cache")
+                    // Debounce: the Monitor may post many Darwin notifications
+                    // in rapid succession (one per threshold). Only process one per second.
+                    let now = Date()
+                    guard now.timeIntervalSince(mgr.lastDarwinNotif) > 1.0 else { return }
+                    mgr.lastDarwinNotif = now
+                    Log.d("[PAKT] Darwin notification — reload")
                     mgr.loadProfileCache()
                     mgr.updateLocalGroups(appState: AppState.shared)
                     mgr.syncToBackend(appState: AppState.shared)
@@ -97,45 +379,156 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     func loadProfileCache() {
+        // Force App Group to re-read from disk (the monitor extension writes
+        // from a different process — without synchronize the host reads stale cache)
+        sharedUD?.synchronize()
+
         let today = Self.dateFormatter.string(from: Date())
+
+        // --- Rescue des jours passés ---
+        // 1. shared_today peut contenir la valeur finale d'hier si l'app est
+        //    ouverte avant le premier threshold Monitor du nouveau jour.
+        // 2. shared_history est alimenté par Monitor au rollover de jour.
+        // Les deux sont drainés ici dans historyRaw (merge).
+        if let staleDate = sharedUD?.string(forKey: "shared_today_date"),
+           staleDate != today,
+           let staleValue = sharedUD?.integer(forKey: "shared_today"), staleValue > 0 {
+            injectTodayIntoHistory(date: staleDate, minutes: staleValue)
+            sharedUD?.set(0, forKey: "shared_today")
+            sharedUD?.set(today, forKey: "shared_today_date")
+            keychainDelete("shared_today")
+            keychainDelete("shared_today_date")
+            Log.d("[ScreenTime] Rescued stale shared_today: \(staleDate)=\(staleValue)min")
+        }
+        if let history = sharedUD?.string(forKey: "shared_history"), !history.isEmpty {
+            for entry in history.split(separator: ",") {
+                let parts = entry.split(separator: ":")
+                guard parts.count == 2, let m = Int(parts[1]), m > 0 else { continue }
+                let date = String(parts[0])
+                guard date != today else { continue }
+                injectTodayIntoHistory(date: date, minutes: m)
+                Log.d("[ScreenTime] Drained shared_history: \(date)=\(m)min")
+            }
+            sharedUD?.removeObject(forKey: "shared_history")
+        }
         var todaySource = "none"
         var socialSource = "none"
         var weekSource = "none"
         var monthSource = "none"
 
-        // === 1. Cache standard (alimenté par openURL / preference keys) ===
+        // Read ALL sources and take the MAX so fresher values from Monitor extension
+        // (via keychain/app group) always beat stale UserDefaults.standard values.
 
-        if UserDefaults.standard.string(forKey: UDKey.todayDate) == today {
-            profileToday = UserDefaults.standard.integer(forKey: UDKey.todayMinutes)
-            if profileToday > 0 { todaySource = "ud_standard" }
-        } else {
-            profileToday = 0
+        // === 1. Cache standard — only `stdSocial` is read; today minutes come
+        // from the App Group / Keychain branches below.
+        let stdSocial: Int = {
+            guard UserDefaults.standard.string(forKey: UDKey.catSocialDate) == today else { return 0 }
+            return UserDefaults.standard.integer(forKey: UDKey.catSocial)
+        }()
+
+        // === 2. App Group (written by Monitor extension) ===
+        let agToday: Int = {
+            let v = sharedUD?.integer(forKey: "shared_today") ?? 0
+            let d = sharedUD?.string(forKey: "shared_today_date") ?? ""
+            return (v > 0 && d == today) ? v : 0
+        }()
+        let agSocial: Int = {
+            let v = sharedUD?.integer(forKey: "shared_social") ?? 0
+            let d = sharedUD?.string(forKey: "shared_social_date") ?? ""
+            return (v > 0 && d == today) ? v : 0
+        }()
+
+        // === 3. Keychain (fallback for when App Group is broken) — social only;
+        // `kcToday` was historically read here but the App Group path above is
+        // now authoritative for today minutes.
+        let kcSocial: Int = {
+            let v = keychainInt("shared_social")
+            let d = keychainRead("shared_social_date") ?? ""
+            return (v > 0 && d == today) ? v : 0
+        }()
+
+
+        // DAR exact value is NOT accessible from the host app — DAR extension
+        // sandbox blocks ALL IPC channels (confirmed 2026-04-12). The DAR view
+        // on the profile renders exact minutes as pixels (display-only).
+        // For backend/social features, DAM thresholds (±15 min) are the only
+        // data source. This is how every Screen Time app works (Opal, UseLess,
+        // ScreenZen). The overcount is an Apple bug (FB15103784), not ours.
+        // ONLY read from App Group (written by the 12-block reader).
+        // Post-2026-04-14: the DAM extension already applies the calibration
+        // factor before writing shared_today, so the App Group value is the
+        // final, corrected number. Do NOT call calibrate() here — that would
+        // apply ×0.70 twice.
+        profileToday = agToday
+        todaySource = agToday > 0 ? "reader" : "none"
+
+        // Live interpolation: if the app is in foreground, the user IS using
+        // their phone. Add elapsed minutes since the last threshold fire.
+        // This gives ~1 min visual updates between 5-min threshold jumps.
+        if agToday > 0, let lastEventStr = sharedUD?.string(forKey: "monitor_debug_last_event") {
+            // Parse "b7_45 @ 18:32:15" → extract time
+            let parts = lastEventStr.split(separator: "@")
+            if parts.count == 2 {
+                let timePart = parts[1].trimmingCharacters(in: .whitespaces)
+                let fmt = DateFormatter()
+                fmt.dateFormat = "HH:mm:ss"
+                if let eventTime = fmt.date(from: timePart) {
+                    let cal = Calendar.current
+                    let now = Date()
+                    // Build today's date with the event time
+                    var comps = cal.dateComponents([.year, .month, .day], from: now)
+                    let eventComps = cal.dateComponents([.hour, .minute, .second], from: eventTime)
+                    comps.hour = eventComps.hour
+                    comps.minute = eventComps.minute
+                    comps.second = eventComps.second
+                    if let fullEventTime = cal.date(from: comps) {
+                        let elapsed = Int(now.timeIntervalSince(fullEventTime) / 60)
+                        if elapsed > 0 && elapsed < 10 {
+                            // Interpolated minutes are real wall-clock time the
+                            // user has had the app open — no Apple overcount to
+                            // correct here. Add raw.
+                            profileToday += elapsed
+                        }
+                    }
+                }
+            }
         }
 
-        if UserDefaults.standard.string(forKey: UDKey.catSocialDate) == today {
-            categorySocial = UserDefaults.standard.integer(forKey: UDKey.catSocial)
-            if categorySocial > 0 { socialSource = "ud_standard" }
-        } else {
-            categorySocial = 0
+        // Never let displayed value decrease (prevents flicker from interpolation jitter)
+        profileToday = max(profileToday, displayedToday)
+        displayedToday = profileToday
+        categorySocial = max(stdSocial, agSocial, kcSocial)
+
+        if categorySocial == stdSocial && categorySocial > 0 { socialSource = "ud_standard" }
+        if categorySocial == agSocial && categorySocial > 0 { socialSource = "app_group" }
+        if categorySocial == kcSocial && categorySocial > 0 { socialSource = "keychain" }
+
+        // === Per-app daily totals from the 12-block reader ===
+        let trackedCount = sharedUD?.integer(forKey: "tracked_app_count") ?? 0
+        var appTotals: [(index: Int, minutes: Int)] = []
+        var breakdown: [PerAppEntry] = []
+        let tokens = trackedAppsTokens
+        for i in 0..<trackedCount {
+            let key = "app\(i)_today"
+            let dateKey = "\(key)_date"
+            let d = sharedUD?.string(forKey: dateKey) ?? ""
+            let rawM = (d == today) ? (sharedUD?.integer(forKey: key) ?? 0) : 0
+            let m = calibrate(rawM)
+            if m > 0 { appTotals.append((i, m)) }
+            if m > 0, i < tokens.count {
+                breakdown.append(PerAppEntry(index: i, token: tokens[i], minutes: m))
+            }
         }
+        appTotals.sort { $0.minutes > $1.minutes }
+        breakdown.sort { $0.minutes > $1.minutes }
+        perAppMinutes = appTotals
+        perAppBreakdown = breakdown
 
         profileWeekAvg = UserDefaults.standard.integer(forKey: UDKey.weekAvg)
         profileMonthAvg = UserDefaults.standard.integer(forKey: UDKey.monthAvg)
         if profileWeekAvg > 0 { weekSource = "ud_standard" }
         if profileMonthAvg > 0 { monthSource = "ud_standard" }
 
-        // === 2. Fallback: App Group UD (écrit par les extensions DAR/Monitor) ===
-
-        if profileToday == 0 {
-            let v = sharedUD?.integer(forKey: "shared_today") ?? 0
-            let d = sharedUD?.string(forKey: "shared_today_date") ?? ""
-            if v > 0 && d == today { profileToday = v; todaySource = "app_group" }
-        }
-        if categorySocial == 0 {
-            let v = sharedUD?.integer(forKey: "shared_social") ?? 0
-            let d = sharedUD?.string(forKey: "shared_social_date") ?? ""
-            if v > 0 && d == today { categorySocial = v; socialSource = "app_group" }
-        }
         if profileWeekAvg == 0 {
             let v = sharedUD?.integer(forKey: "shared_weekavg") ?? 0
             if v > 0 { profileWeekAvg = v; weekSource = "app_group" }
@@ -155,12 +548,13 @@ final class ScreenTimeManager: ObservableObject {
         if profileToday == 0 {
             let v = keychainInt("shared_today")
             let d = keychainRead("shared_today_date") ?? ""
+            // DAM extension writes the already-calibrated value here too.
             if v > 0 && d == today { profileToday = v; todaySource = "keychain" }
         }
         if categorySocial == 0 {
             let v = keychainInt("shared_social")
             let d = keychainRead("shared_social_date") ?? ""
-            if v > 0 && d == today { categorySocial = v; socialSource = "keychain" }
+            if v > 0 && d == today { categorySocial = calibrate(v); socialSource = "keychain" }
         }
         if profileWeekAvg == 0 {
             let v = keychainInt("shared_weekavg")
@@ -172,7 +566,16 @@ final class ScreenTimeManager: ObservableObject {
         }
 
         let darDebug = keychainRead("dar_debug") ?? "never"
+        darDebugInfo = darDebug
+        todaySourceInfo = todaySource
         Log.d("[PAKT loadProfileCache] today=\(profileToday)(\(todaySource)) social=\(categorySocial)(\(socialSource)) weekAvg=\(profileWeekAvg)(\(weekSource)) monthAvg=\(profileMonthAvg)(\(monthSource)) | DAR=\(darDebug)")
+
+        // Monitor telemetry — shows whether the Monitor extension's callbacks
+        // are actually firing. If these stay "never" while the user actively
+        // uses their phone, Monitor isn't receiving events at all.
+        let monitorLastEvent = sharedUD?.string(forKey: "monitor_debug_last_event") ?? "never"
+        let monitorIntervalStart = sharedUD?.string(forKey: "monitor_debug_last_interval_start") ?? "never"
+        Log.d("[PAKT Monitor Debug] last_event=\(monitorLastEvent) | interval_start=\(monitorIntervalStart)")
 
         // Si on a récupéré des données via fallback, les sauver dans le cache standard + sync
         if profileToday > 0 && UserDefaults.standard.string(forKey: UDKey.todayDate) != today {
@@ -185,17 +588,10 @@ final class ScreenTimeManager: ObservableObject {
             UserDefaults.standard.set(today, forKey: UDKey.catSocialDate)
         }
 
-        // History — fusionner toutes les sources pour ne pas rester bloqué sur un cache périmé
-        let stdRaw = UserDefaults.standard.string(forKey: UDKey.historyRaw) ?? ""
-        let sharedRaw = sharedUD?.string(forKey: "shared_history") ?? ""
-        let kcRaw = keychainRead("shared_history") ?? ""
-        let mergedHistory = mergeHistoryRaw([stdRaw, sharedRaw, kcRaw])
-        if !mergedHistory.isEmpty {
-            UserDefaults.standard.set(mergedHistory, forKey: UDKey.historyRaw)
-            rebuildHistory(from: mergedHistory)
-        } else {
-            buildEmptyHistory()
-        }
+        // History — ONLY from the new reader. Build chart from profileToday
+        // (which was just set above from App Group = reader data).
+        // Don't merge old sources — they're stale.
+        buildHistoryFromMap([:])
     }
 
     func updateProfileToday(_ minutes: Int) {
@@ -223,8 +619,30 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     func updateProfileHistory(_ raw: String) {
-        UserDefaults.standard.set(raw, forKey: UDKey.historyRaw)
-        rebuildHistory(from: raw)
+        // MERGE au lieu d'overwrite : DAR retourne parfois raw amputé (hier=0
+        // stripped par filter > 0). Écraser historyRaw ferait disparaître les
+        // jours rescued par Monitor (shared_history) ou backfillés par backend.
+        let existing = UserDefaults.standard.string(forKey: UDKey.historyRaw) ?? ""
+        var byDate = parseHistoryCSV(existing)
+        for (date, minutes) in parseHistoryCSV(raw) {
+            byDate[date] = max(byDate[date] ?? 0, minutes)
+        }
+        let merged = byDate.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: ",")
+        UserDefaults.standard.set(merged, forKey: UDKey.historyRaw)
+        rebuildHistory(from: merged)
+
+        // CRITICAL: use today's history value as the source of truth for profileToday
+        // The chart DAR extension writes accurate per-day data. If we can't get
+        // TodayMinutesKey to bridge, we extract today from HistoryKey (which works).
+        let todayKey = Self.dateFormatter.string(from: Date())
+        if let todayMins = byDate[todayKey], todayMins > profileToday {
+            profileToday = todayMins
+            UserDefaults.standard.set(todayMins, forKey: UDKey.todayMinutes)
+            UserDefaults.standard.set(todayKey, forKey: UDKey.todayDate)
+            Log.d("[ScreenTime] profileToday updated from HistoryKey: \(todayMins) min")
+            updateLocalGroups(appState: AppState.shared)
+            syncToBackend(appState: AppState.shared)
+        }
     }
 
     /// Injecte le score du jour dans l'historique existant (appelé depuis onOpenURL screentime)
@@ -260,15 +678,36 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     private func rebuildHistory(from raw: String) {
-        buildHistoryFromMap(parseHistoryCSV(raw))
+        // Old raw-CSV sources (DAR, WebSocket, openURL) are stale and ignored.
+        // Instead we fetch the real 7-day history from the backend which is
+        // the source of truth across devices and has the social-shared values.
+        Task { await self.refreshHistoryFromBackend() }
+    }
+
+    /// Pulls the last 7 days of this user's scores from the backend and rebuilds
+    /// `profileHistory`. Today is still merged in from `profileToday` (for
+    /// near-real-time snappiness before the next sync round-trip).
+    @MainActor
+    func refreshHistoryFromBackend() async {
+        let cal = Calendar.current
+        let sinceDate = cal.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        let since = Self.dateFormatter.string(from: sinceDate)
+        do {
+            let scores = try await APIClient.shared.getMyScores(since: since)
+            var byDate: [String: Int] = [:]
+            for s in scores { byDate[s.date] = s.minutes }
+            buildHistoryFromMap(byDate)
+        } catch {
+            Log.d("[PAKT History] refresh failed: \(error)")
+            buildHistoryFromMap([:])
+        }
     }
 
     private func buildEmptyHistory() { buildHistoryFromMap([:]) }
 
     private func buildHistoryFromMap(_ byDate: [String: Int]) {
+        // Inject today's reader value (from App Group only — safe, no stale data).
         var merged = byDate
-        // Toujours injecter profileToday pour que le jour courant soit à jour
-        // même si le weekChart scene n'a pas renvoyé de données fraîches
         let today = Self.dateFormatter.string(from: Date())
         if profileToday > 0 {
             merged[today] = max(merged[today] ?? 0, profileToday)
@@ -324,38 +763,74 @@ final class ScreenTimeManager: ObservableObject {
 
     // MARK: - Background Monitoring (DeviceActivityMonitor scheduling)
 
-    func startBackgroundMonitoring() {
-        guard isAuthorized else { return }
-        let center = DeviceActivityCenter()
+    private var lastBackgroundMonitoringStart: Date = .distantPast
 
-        // Schedule: monitor from midnight to midnight, repeating daily
+    func startBackgroundMonitoring(force: Bool = false) {
+        guard isAuthorized else { return }
+        
+        let now = Date()
+        if !force && now.timeIntervalSince(lastBackgroundMonitoringStart) < 60 {
+            return
+        }
+        
+        let center = DeviceActivityCenter()
+        
+        // 1. Définir le planning (Toute la journée)
         let schedule = DeviceActivitySchedule(
             intervalStart: DateComponents(hour: 0, minute: 0),
-            intervalEnd: DateComponents(hour: 23, minute: 59, second: 59),
+            intervalEnd: DateComponents(hour: 23, minute: 59),
             repeats: true
         )
-
-        // Create threshold events every 15 minutes of total device usage (15, 30, 45, ..., 720)
-        var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
-        for mins in stride(from: 15, through: 720, by: 15) {
-            let eventName = DeviceActivityEvent.Name("threshold_\(mins)")
-            events[eventName] = DeviceActivityEvent(
-                threshold: DateComponents(minute: mins)
-            )
+        
+        // 2. CRÉER LES ÉVÉNEMENTS "TOTAL DEVICE" (Sans Picker)
+        // En laissant applications, categories et webDomains VIDES [],
+        // Apple comprend : "Traque TOUT l'appareil"
+        var events = [DeviceActivityEvent.Name: DeviceActivityEvent]()
+        
+        // On crée 12 blocs de 2h (ton architecture actuelle)
+        // Mais on s'assure que chaque bloc surveille TOUT.
+        // Short-biased thresholds for near-real-time social sharing.
+        // iOS caps total events per schedule at 20, but we chunk per 2h block
+        // so iOS evaluates them block by block. Each block maxes at 120 min,
+        // so per-block thresholds must stay <=120. Bias toward small values
+        // early in the block to maximise visibility for friends.
+        for block in 0..<12 {
+            for threshold in [2, 5, 10, 15, 20, 30, 45, 60, 75, 90, 105, 120] {
+                let eventName = DeviceActivityEvent.Name("b\(block)_\(threshold)")
+                events[eventName] = DeviceActivityEvent(
+                    applications: [],   // <--- VIDE = TOUT
+                    categories: [],     // <--- VIDE = TOUT
+                    webDomains: [],     // <--- VIDE = TOUT
+                    threshold: DateComponents(minute: threshold)
+                )
+            }
+        }
+        
+        // 3. Ajouter les apps spécifiques pour le "Per-app breakdown"
+        // Si l'utilisateur a quand même choisi des apps à surveiller individuellement
+        for (idx, token) in trackedAppsTokens.enumerated() {
+            for m in [5, 15, 30, 60, 120] {
+                let appEventName = DeviceActivityEvent.Name("app\(idx)_\(m)")
+                events[appEventName] = DeviceActivityEvent(
+                    applications: [token],
+                    threshold: DateComponents(minute: m)
+                )
+            }
         }
 
         do {
-            try center.startMonitoring(
-                .init("daily_screentime"),
-                during: schedule,
-                events: events
-            )
-            Log.d("[PAKT Monitor] Background monitoring started with \(events.count) thresholds")
+            // On nettoie les anciennes activités pour éviter les conflits
+            center.stopMonitoring([DeviceActivityName("pakt_daily_v2")])
+            
+            // On lance la nouvelle surveillance globale
+            try center.startMonitoring(DeviceActivityName("pakt_daily_v2"), during: schedule, events: events)
+            
+            lastBackgroundMonitoringStart = now
+            Log.d("[PAKT] Monitoring GLOBAL démarré (Total Device)")
         } catch {
-            Log.d("[PAKT Monitor] Failed to start monitoring: \(error)")
+            Log.d("[PAKT] Erreur StartMonitoring: \(error)")
         }
     }
-
     // MARK: - Lire les données (écrites par onOpenURL dans PAKTApp)
 
     private func readValue(key: String, dateKey: String) -> Int {
@@ -382,9 +857,9 @@ final class ScreenTimeManager: ObservableObject {
         for gi in appState.groups.indices {
             for mi in appState.groups[gi].members.indices {
                 if appState.groups[gi].members[mi].uid == uid {
-                    // todayMinutes : le local (DAR/Monitor) est autoritaire
-                    // Écrire même si la valeur locale est plus basse (corrige les données fausses du backend)
-                    if today > 0 && appState.groups[gi].members[mi].todayMinutes != today {
+                    // DAR is authoritative for self — direct assign so a corrected
+                    // (lower) value can replace a previously-inflated one.
+                    if appState.groups[gi].members[mi].todayMinutes != today {
                         appState.groups[gi].members[mi].todayMinutes = today
                         didChange = true
                     }
@@ -510,16 +985,10 @@ final class ScreenTimeManager: ObservableObject {
                     guard let gi = appState.groups.firstIndex(where: { $0.id == update.groupId }),
                           let mi = appState.groups[gi].members.firstIndex(where: { $0.uid == update.memberUid })
                     else { continue }
-                    let isMe = update.memberUid == uid
-                    if isMe {
-                        // Pour moi : le local est autoritaire, écriture directe
-                        appState.groups[gi].members[mi].todayMinutes = update.todayMinutes
-                        appState.groups[gi].members[mi].todaySocialMinutes = update.todaySocialMinutes
-                    } else {
-                        // Pour les autres : max() pour ne pas régresser les updates WebSocket
-                        appState.groups[gi].members[mi].todayMinutes = max(appState.groups[gi].members[mi].todayMinutes, update.todayMinutes)
-                        appState.groups[gi].members[mi].todaySocialMinutes = max(appState.groups[gi].members[mi].todaySocialMinutes, update.todaySocialMinutes)
-                    }
+                    // max() pour tout le monde — ne jamais régresser la valeur locale avec
+                    // un snapshot périmé (le local peut être plus récent grâce au DAR/Monitor)
+                    appState.groups[gi].members[mi].todayMinutes = max(appState.groups[gi].members[mi].todayMinutes, update.todayMinutes)
+                    appState.groups[gi].members[mi].todaySocialMinutes = max(appState.groups[gi].members[mi].todaySocialMinutes, update.todaySocialMinutes)
                     // monthMinutes: écriture directe — le cumul calculé est autoritaire
                     appState.groups[gi].members[mi].monthMinutes = update.monthMinutes
                     appState.groups[gi].members[mi].monthSocialMinutes = update.monthSocialMinutes
@@ -545,7 +1014,6 @@ final class ScreenTimeManager: ObservableObject {
             // weekAvg et monthAvg viennent EXCLUSIVEMENT des DARs Apple (WeekAvgScene / MonthAvgScene)
             // L'historique récent (7 derniers jours) vient du DAR WeekChartScene — le backend ne l'écrase pas
             if let myScores = allMemberScores[uid], !myScores.isEmpty {
-                let socialScores = mySocialByDate
                 await MainActor.run {
                     // Historique : charger l'existant (alimenté par les DARs)
                     let existing = UserDefaults.standard.string(forKey: UDKey.historyRaw) ?? ""
@@ -631,9 +1099,13 @@ final class ScreenTimeManager: ObservableObject {
             guard minutes > 0 else { return }
             guard AuthManager.shared.currentUser != nil else { return }
             let social = await MainActor.run { categorySocial }
+            // Today's value comes from DAR and is authoritative — use correctScore
+            // (direct-assign) so it can overwrite any previously-stored inflated
+            // value. Historical days still go through syncScore (GREATEST) below.
             let date = Self.dateFormatter.string(from: Date())
             // Envoyer social seulement si on a une valeur (sinon on écraserait le backend avec nil)
-            try? await APIClient.shared.syncScore(minutes: minutes, socialMinutes: social > 0 ? social : nil, date: date)
+            try? await APIClient.shared.correctScore(minutes: minutes, socialMinutes: social > 0 ? social : nil, date: date)
+            await self.refreshHistoryFromBackend()
         }
     }
 

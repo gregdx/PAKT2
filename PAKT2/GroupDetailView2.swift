@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import DeviceActivity
 
 struct GroupDetailView: View {
     let groupId: UUID
@@ -78,8 +79,7 @@ struct GroupDetailView: View {
                                         VStack(spacing: 0) {
                                             ForEach(Array(group.members.enumerated()), id: \.element.id) { i, member in
                                                 HStack(spacing: 12) {
-                                                    AvatarView(name: member.name, size: 40, color: Theme.textMuted,
-                                                               uid: member.uid, isMe: appState.isMe(member))
+                                                    UserAvatarButton(uid: member.uid, name: member.name, size: 40, color: Theme.textMuted, isMe: appState.isMe(member), disabled: member.uid.isEmpty)
                                                         .environmentObject(appState)
                                                     Text(member.name)
                                                         .font(.system(size: 16, weight: .medium))
@@ -231,16 +231,12 @@ struct GroupDetailView: View {
                 }) {
                     Text(tabLabel(tab))
                         .font(.system(size: 15, weight: activeTab == tab ? .semibold : .regular))
-                        .foregroundColor(activeTab == tab ? Theme.bg : Theme.textMuted)
+                        .foregroundColor(activeTab == tab ? .white : Theme.text)
                         .padding(.vertical, 8)
                         .padding(.horizontal, 16)
-                        .background {
-                            if activeTab == tab {
-                                RoundedRectangle(cornerRadius: 20).fill(Theme.text)
-                            } else {
-                                RoundedRectangle(cornerRadius: 20).fill(.clear).liquidGlass(cornerRadius: 20)
-                            }
-                        }
+                        .background(
+                            Capsule().fill(activeTab == tab ? Theme.text : Theme.bgCard)
+                        )
                 }
             }
             Spacer()
@@ -358,8 +354,7 @@ struct GroupDetailView: View {
                         )
                         .frame(width: avatarSize + 20, height: avatarSize + 20)
                 }
-                AvatarView(name: member.name, size: avatarSize, color: rankColor,
-                           uid: member.uid, isMe: appState.isMe(member))
+                UserAvatarButton(uid: member.uid, name: member.name, size: avatarSize, color: rankColor, isMe: appState.isMe(member), disabled: member.uid.isEmpty)
                     .environmentObject(appState)
                     .overlay(
                         Circle()
@@ -457,8 +452,7 @@ struct GroupDetailView: View {
                     }
                     .frame(width: 28)
 
-                    AvatarView(name: member.name, size: 40, color: isTop3 ? rankColor : Theme.textMuted,
-                               uid: member.uid, isMe: appState.isMe(member))
+                    UserAvatarButton(uid: member.uid, name: member.name, size: 40, color: isTop3 ? rankColor : Theme.textMuted, isMe: appState.isMe(member), disabled: member.uid.isEmpty)
                         .environmentObject(appState)
                         .overlay(
                             isTop3 ? Circle().stroke(rankColor.opacity(0.4), lineWidth: 1.5) : nil
@@ -473,9 +467,31 @@ struct GroupDetailView: View {
 
                     Spacer()
 
-                    Text(mins > 0 ? formatTime(mins) : "--")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(mins == 0 ? Theme.textFaint : (rank == 1 ? Theme.green : Theme.text))
+                    if appState.isMe(member) {
+                        // Self's value comes from Monitor via loadProfileCache +
+                        // updateLocalGroups → same Text display as others. No DAR
+                        // remote view needed: it was opaque pixels, inconsistent
+                        // with other members who show backend Monitor values.
+                        Text(mins > 0 ? formatTime(mins) : "--")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(mins == 0 ? Theme.textFaint : (rank == 1 ? Theme.green : Theme.text))
+                    } else if member.isSyncStale {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 10))
+                            Text("No data · \(member.hoursSinceLastSync ?? 0)h ago")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundColor(Theme.red)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Theme.red.opacity(0.12))
+                        .clipShape(Capsule())
+                    } else {
+                        Text(mins > 0 ? formatTime(mins) : "--")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(mins == 0 ? Theme.textFaint : (rank == 1 ? Theme.green : Theme.text))
+                    }
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
 
@@ -565,7 +581,9 @@ struct GroupDetailView: View {
         }
         .frame(width: 140)
         .padding(.vertical, 20)
-        .liquidGlass(cornerRadius: 16)
+        .background(
+            RoundedRectangle(cornerRadius: 16).fill(Theme.bgCard)
+        )
     }
 
     // MARK: - Awards Section
@@ -695,7 +713,9 @@ struct GroupDetailView: View {
                 .foregroundColor(color)
         }
         .padding(16)
-        .liquidGlass(cornerRadius: 16)
+        .background(
+            RoundedRectangle(cornerRadius: 16).fill(Theme.bgCard)
+        )
         .padding(.horizontal, 24)
     }
 
@@ -703,7 +723,7 @@ struct GroupDetailView: View {
 
     private var compactMemberList: some View {
         VStack(spacing: 6) {
-            ForEach(group.members, id: \.id) { member in
+            ForEach(group.members) { member in
                 Button { selectedMemberUID = member.uid } label: {
                     HStack(spacing: 12) {
                         AvatarView(name: member.name, size: 36, color: Theme.textMuted,
@@ -713,9 +733,26 @@ struct GroupDetailView: View {
                             .font(.system(size: 15, weight: .medium))
                             .foregroundColor(Theme.text)
                         Spacer()
-                        Text(formatTime(member.todayMinutes))
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(member.todayMinutes <= group.goalMinutes ? Theme.green : Theme.textMuted)
+                        if appState.isMe(member) {
+                            // Self's value comes from Monitor via loadProfileCache
+                            // → same Text display as everyone else. Consistent UI.
+                            Text(formatTime(member.todayMinutes))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(member.todayMinutes <= group.goalMinutes ? Theme.green : Theme.textMuted)
+                        } else if member.isSyncStale {
+                            // "Cache sa honte" — member hasn't synced in 24h+
+                            Text("Cache sa honte")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundColor(Theme.red)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Theme.red.opacity(0.12))
+                                .clipShape(Capsule())
+                        } else {
+                            Text(formatTime(member.todayMinutes))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(member.todayMinutes <= group.goalMinutes ? Theme.green : Theme.textMuted)
+                        }
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(Theme.textFaint)
@@ -847,8 +884,7 @@ struct GroupDetailView: View {
 
                                 // Avatar at last point
                                 if let last = points.last {
-                                    AvatarView(name: member.name, size: 22, color: color,
-                                               uid: member.uid, isMe: appState.isMe(member))
+                                    UserAvatarButton(uid: member.uid, name: member.name, size: 22, color: color, isMe: appState.isMe(member), disabled: member.uid.isEmpty)
                                         .environmentObject(appState)
                                         .overlay(Circle().stroke(color, lineWidth: 1.5))
                                         .position(x: last.x, y: last.y)
@@ -896,8 +932,7 @@ struct GroupDetailView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(Theme.textFaint)
                         .tracking(1.5)
-                    AvatarView(name: best.name, size: 56, color: Theme.green,
-                               uid: best.uid, isMe: appState.isMe(best))
+                    UserAvatarButton(uid: best.uid, name: best.name, size: 56, color: Theme.green, isMe: appState.isMe(best), disabled: best.uid.isEmpty)
                         .environmentObject(appState)
                         .overlay(Circle().stroke(Theme.green, lineWidth: 2))
                     Text(best.name)
@@ -921,8 +956,7 @@ struct GroupDetailView: View {
                         .tracking(1.5)
                     HStack(spacing: -6) {
                         ForEach(underGoalMembers.prefix(8), id: \.id) { member in
-                            AvatarView(name: member.name, size: 36, color: Theme.green,
-                                       uid: member.uid, isMe: appState.isMe(member))
+                            UserAvatarButton(uid: member.uid, name: member.name, size: 36, color: Theme.green, isMe: appState.isMe(member), disabled: member.uid.isEmpty)
                                 .environmentObject(appState)
                                 .overlay(Circle().stroke(Theme.green.opacity(0.5), lineWidth: 1.5))
                         }
@@ -1011,7 +1045,9 @@ struct GroupDetailView: View {
                     .foregroundColor(Theme.textFaint)
             }
             .padding(16)
-            .liquidGlass(cornerRadius: 16)
+            .background(
+                RoundedRectangle(cornerRadius: 16).fill(Theme.bgCard)
+            )
             .padding(.horizontal, 24)
         }
     }
@@ -1125,8 +1161,7 @@ struct GroupDetailView: View {
                 VStack(spacing: 0) {
                     ForEach(Array(group.members.enumerated()), id: \.element.id) { i, member in
                         HStack(spacing: 12) {
-                            AvatarView(name: member.name, size: 36, color: Theme.textMuted,
-                                       uid: member.uid, isMe: appState.isMe(member))
+                            UserAvatarButton(uid: member.uid, name: member.name, size: 36, color: Theme.textMuted, isMe: appState.isMe(member), disabled: member.uid.isEmpty)
                                 .environmentObject(appState)
                             Text(member.name)
                                 .font(.system(size: 15, weight: .medium))

@@ -38,20 +38,11 @@ struct PAKTApp: App {
                           let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
 
                     switch url.host {
-                    case "screentime":
-                        guard let minutesStr = components.queryItems?.first(where: { $0.name == "minutes" })?.value,
-                              let minutes = Int(minutesStr), minutes > 0, minutes <= 1440 else { return }
-                        let todayStr = ScreenTimeManager.dateFormatter.string(from: Date())
-                        UserDefaults.standard.set(minutes, forKey: UDKey.todayMinutes)
-                        UserDefaults.standard.set(todayStr, forKey: UDKey.todayDate)
-                        ScreenTimeManager.shared.updateProfileToday(minutes)
-                        // Accumuler dans l'historique pour le graphe (ne dépend plus du weekChart)
-                        ScreenTimeManager.shared.injectTodayIntoHistory(date: todayStr, minutes: minutes)
-                        // Mise à jour immédiate des groupes locaux
-                        ScreenTimeManager.shared.updateLocalGroups(appState: AppState.shared)
-                        let currentSocial = ScreenTimeManager.shared.categorySocial
-                        Task { try? await APIClient.shared.syncScore(minutes: minutes, socialMinutes: currentSocial > 0 ? currentSocial : nil, date: todayStr) }
-
+                    // "screentime" URL tap bridge removed 2026-04-14 —
+                    // DAR extensions can't IPC to the host (confirmed Apr 12),
+                    // and the DAM extension now syncs directly to the backend.
+                    // If an old DAR build somehow still emits this URL, just
+                    // ignore it so we don't overwrite the authoritative value.
                     case "weekavg":
                         guard let minutesStr = components.queryItems?.first(where: { $0.name == "minutes" })?.value,
                               let minutes = Int(minutesStr), minutes > 0 else { return }

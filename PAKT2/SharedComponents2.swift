@@ -26,8 +26,12 @@ struct SwipeDismissView<Content: View>: View {
                     }
                     .onEnded { value in
                         if value.startLocation.x < 40 && value.translation.width > 100 {
+                            // Slide far enough off-screen on any device. A
+                            // hardcoded 1000pt avoids both the deprecated
+                            // `UIScreen.main` and the faff of hopping through
+                            // the window scene just to read a width.
                             withAnimation(.easeOut(duration: 0.25)) {
-                                offset = UIScreen.main.bounds.width
+                                offset = 1000
                             }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                                 onDismiss()
@@ -69,7 +73,7 @@ extension UUID: @retroactive Identifiable {
 
 // MARK: - Swipe-back
 
-extension UINavigationController: UIGestureRecognizerDelegate {
+extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
     override open func viewDidLoad() {
         super.viewDidLoad()
         interactivePopGestureRecognizer?.delegate = self
@@ -95,43 +99,75 @@ enum Log {
     private static let logger = Logger(subsystem: "com.PAKT2", category: "app")
 
     static func d(_ message: String) {
-        #if DEBUG
-        logger.debug("\(message, privacy: .public)")
-        #endif
+        // Use .info instead of .debug so the message survives Release builds
+        // too — we need these diagnostics to verify DAR IPC in Release.
+        logger.info("\(message, privacy: .public)")
     }
     static func i(_ message: String) { logger.info("\(message, privacy: .public)") }
     static func e(_ message: String) { logger.error("\(message, privacy: .public)") }
 }
 
+
 // MARK: - Cached Async Image
 
-private let _venueImageCache = NSCache<NSString, UIImage>()
+private final class _TimedImage {
+    let image: UIImage
+    let fetchedAt: Date
+    init(_ image: UIImage) { self.image = image; self.fetchedAt = Date() }
+}
+
+private let _venueImageCache = NSCache<NSString, _TimedImage>()
+
+private let _venueImageTTL: TimeInterval = 600
+
+enum ImageCache {
+    static func invalidate(url: URL) {
+        _venueImageCache.removeObject(forKey: url.absoluteString as NSString)
+    }
+    static func invalidateAll() {
+        _venueImageCache.removeAllObjects()
+    }
+}
 
 struct CachedAsyncImage: View {
     let url: URL?
     @State private var image: UIImage? = nil
 
     var body: some View {
-        if let image {
-            Image(uiImage: image).resizable()
-        } else {
-            Color.clear.onAppear { loadImage() }
+        SwiftUI.Group {
+            if let image {
+                Image(uiImage: image).resizable()
+            } else {
+                Color.clear
+            }
+        }
+        // `.task(id:)` reruns — and cancels the prior task — every time the
+        // URL changes. Switching to this from `.onAppear` fixes the "same
+        // preview image lingers when user taps a different map pin" bug:
+        // SwiftUI was reusing the view instance with a new URL but never
+        // re-firing onAppear, so the old UIImage stayed on screen.
+        .task(id: url) {
+            await loadImage()
         }
     }
 
-    private func loadImage() {
-        guard let url else { return }
-        let key = url.absoluteString as NSString
-        if let cached = _venueImageCache.object(forKey: key) {
-            image = cached
+    private func loadImage() async {
+        guard let url else {
+            image = nil
             return
         }
-        Task {
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
-                  let img = UIImage(data: data) else { return }
-            _venueImageCache.setObject(img, forKey: key)
-            await MainActor.run { image = img }
+        let key = url.absoluteString as NSString
+        if let cached = _venueImageCache.object(forKey: key),
+           Date().timeIntervalSince(cached.fetchedAt) < _venueImageTTL {
+            image = cached.image
+            return
         }
+        // Clear stale content so the old image doesn't flash under the new one.
+        image = nil
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              let img = UIImage(data: data) else { return }
+        _venueImageCache.setObject(_TimedImage(img), forKey: key)
+        image = img
     }
 }
 
@@ -552,45 +588,49 @@ private let _avatarCacheDir: URL? = {
 }()
 
 func cachedPhoto(for uid: String) -> UIImage? {
-    _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
-    if let img = _photoCache[uid] { return img }
-    // Try disk cache
-    if let dir = _avatarCacheDir,
-       let data = try? Data(contentsOf: dir.appendingPathComponent("\(uid).jpg")),
-       let img = UIImage(data: data) {
-        _photoCache[uid] = img
-        return img
+    // `withLock` is the async-safe scoped API; calling `.lock()`/`.unlock()`
+    // directly is gated behind a Swift 6 error because it can strand the
+    // lock if a suspension point slips between the two calls.
+    _photoCacheLock.withLock {
+        if let img = _photoCache[uid] { return img }
+        if let dir = _avatarCacheDir,
+           let data = try? Data(contentsOf: dir.appendingPathComponent("\(uid).jpg")),
+           let img = UIImage(data: data) {
+            _photoCache[uid] = img
+            return img
+        }
+        return nil
     }
-    return nil
 }
 func cachePhoto(_ img: UIImage, for uid: String) {
-    _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
-    _photoCache[uid] = img
-    _photoFetching.remove(uid)
-    _photoFailedAt.removeValue(forKey: uid)
-    // Save to disk
+    _photoCacheLock.withLock {
+        _photoCache[uid] = img
+        _photoFetching.remove(uid)
+        _photoFailedAt.removeValue(forKey: uid)
+    }
+    // Disk write happens outside the lock: the in-memory caches are
+    // already consistent and I/O doesn't need to block other readers.
     if let dir = _avatarCacheDir, let data = img.jpegData(compressionQuality: 0.7) {
         try? data.write(to: dir.appendingPathComponent("\(uid).jpg"))
     }
 }
 func isPhotoFetching(_ uid: String) -> Bool {
-    _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
-    return _photoFetching.contains(uid)
+    _photoCacheLock.withLock { _photoFetching.contains(uid) }
 }
 func markPhotoFetching(_ uid: String) {
-    _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
-    _photoFetching.insert(uid)
+    _photoCacheLock.withLock { _ = _photoFetching.insert(uid) }
 }
 func markPhotoFailed(_ uid: String) {
-    _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
-    _photoFetching.remove(uid)
-    _photoFailedAt[uid] = Date()
+    _photoCacheLock.withLock {
+        _photoFetching.remove(uid)
+        _photoFailedAt[uid] = Date()
+    }
 }
 func shouldRetryPhoto(_ uid: String) -> Bool {
-    _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
-    guard let failedAt = _photoFailedAt[uid] else { return true }
-    // Retry after 60 seconds
-    return Date().timeIntervalSince(failedAt) > 60
+    _photoCacheLock.withLock {
+        guard let failedAt = _photoFailedAt[uid] else { return true }
+        return Date().timeIntervalSince(failedAt) > 60
+    }
 }
 func shouldRevalidatePhoto(_ uid: String) -> Bool {
     guard let dir = _avatarCacheDir else { return true }
@@ -603,10 +643,11 @@ func shouldRevalidatePhoto(_ uid: String) -> Bool {
 
 /// Force clear all caches (for pull-to-refresh or debug)
 func clearAllPhotoCaches() {
-    _photoCacheLock.lock(); defer { _photoCacheLock.unlock() }
-    _photoCache.removeAll()
-    _photoFetching.removeAll()
-    _photoFailedAt.removeAll()
+    _photoCacheLock.withLock {
+        _photoCache.removeAll()
+        _photoFetching.removeAll()
+        _photoFailedAt.removeAll()
+    }
     if let dir = _avatarCacheDir {
         try? FileManager.default.removeItem(at: dir)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -638,7 +679,7 @@ struct AvatarView: View {
             }
         }
         .onAppear { loadPhoto() }
-        .onChange(of: uid) { _ in
+        .onChange(of: uid) { _, _ in
             remotePhoto = nil
             loadPhoto()
         }
@@ -663,6 +704,114 @@ struct AvatarView: View {
                 markPhotoFailed(uid)
             }
         }
+    }
+}
+
+// MARK: - Photo-only avatar (no AppState dependency)
+
+/// Compact avatar that shows a user's profile photo when available, falling
+/// back to the first letter of their name. Independent of `AppState` so it
+/// works inside sheets and other contexts where the environment object may
+/// not be injected.
+struct FriendPhotoCircle: View {
+    let uid: String
+    let name: String
+    var size: CGFloat = 36
+    var ringColor: Color? = nil
+    var ringWidth: CGFloat = 2.5
+
+    @State private var image: UIImage? = nil
+
+    var body: some View {
+        ZStack {
+            Circle().fill(Theme.bgCard).frame(width: size, height: size)
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+                    .frame(width: size, height: size).clipShape(Circle())
+            } else {
+                Text(String(name.prefix(1)).uppercased())
+                    .font(.system(size: size * 0.42, weight: .bold))
+                    .foregroundColor(Theme.text)
+            }
+        }
+        .overlay(
+            SwiftUI.Group {
+                if let ringColor {
+                    Circle().strokeBorder(ringColor, lineWidth: ringWidth)
+                }
+            }
+        )
+        .onAppear(perform: load)
+        .onChange(of: uid) { _, _ in
+            image = nil
+            load()
+        }
+    }
+
+    private func load() {
+        guard !uid.isEmpty else { return }
+        if let cached = cachedPhoto(for: uid) {
+            if image == nil { image = cached }
+            guard shouldRevalidatePhoto(uid) else { return }
+        }
+        guard !isPhotoFetching(uid), shouldRetryPhoto(uid) else { return }
+        markPhotoFetching(uid)
+        Task {
+            if let img = await AuthManager.shared.fetchProfilePhoto(uid: uid) {
+                cachePhoto(img, for: uid)
+                await MainActor.run { image = img }
+            } else {
+                markPhotoFailed(uid)
+            }
+        }
+    }
+}
+
+// MARK: - Universal tappable avatar
+
+/// Tappable avatar that opens `FriendProfileView` for any user in the app.
+/// Use this everywhere an avatar is displayed so every member/friend photo
+/// becomes a link to that user's profile (one of the April-14 product asks).
+///
+/// Pass the uid (required for the profile to load). If the uid matches a
+/// known friend, the full `AppUser` is reused; otherwise a minimal stub
+/// is built so the profile sheet can still fetch the rest from the backend.
+struct UserAvatarButton: View {
+    let uid: String
+    let name: String
+    var size: CGFloat = 36
+    var color: Color = Theme.bgCard
+    var isMe: Bool = false
+    /// When true, tapping is a no-op (useful for demo/empty-uid members).
+    var disabled: Bool = false
+
+    @State private var showProfile = false
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        Button {
+            guard !disabled, !uid.isEmpty, !isMe else { return }
+            showProfile = true
+        } label: {
+            AvatarView(name: name, size: size, color: color, uid: uid, isMe: isMe)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showProfile) {
+            if let user = resolvedUser() {
+                NavigationStack {
+                    FriendProfileView(user: user)
+                        .environmentObject(appState)
+                }
+            }
+        }
+    }
+
+    private func resolvedUser() -> AppUser? {
+        if let friend = FriendManager.shared.friends.first(where: { $0.id == uid }) {
+            return friend
+        }
+        guard !uid.isEmpty else { return nil }
+        return AppUser(id: uid, firstName: name, email: "", goalHours: 3.0)
     }
 }
 

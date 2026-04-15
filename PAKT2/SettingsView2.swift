@@ -1,5 +1,8 @@
 import SwiftUI
 import PhotosUI
+import FamilyControls
+import DeviceActivity
+import ManagedSettings
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
@@ -44,6 +47,13 @@ struct SettingsView: View {
     }
 
     @State private var appeared = false
+    @State private var showFamilyPicker = false
+    @State private var showTrackedAppsPicker = false
+    @State private var trackedAppsDraft: FamilyActivitySelection = ScreenTimeManager.loadTrackedAppsSelection()
+    @State private var showAutoDetect = false
+    @State private var autoDetectStatus: String = ""
+    @State private var debugLines: [String] = []
+    @State private var runningDebug = false
 
     var body: some View {
         ZStack {
@@ -137,7 +147,7 @@ struct SettingsView: View {
                         .offset(x: 28, y: 28)
                 }
             }
-            .onChange(of: selectedPhoto) { newItem in
+            .onChange(of: selectedPhoto) { _, newItem in
                 Task {
                     if let data = try? await newItem?.loadTransferable(type: Data.self),
                        let img = UIImage(data: data) {
@@ -169,7 +179,7 @@ struct SettingsView: View {
                         .foregroundColor(Theme.text)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
-                        .onChange(of: newUsername) { v in
+                        .onChange(of: newUsername) { _, v in
                             let clean = v.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "_" }
                             if clean == appState.userName.lowercased() {
                                 usernameState = .idle; return
@@ -274,6 +284,352 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Tracked apps (per-app DAM tracking, Opal-style "top apps" source)
+
+    var trackedAppsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "square.grid.2x2")
+                    .foregroundColor(Theme.green)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Apps à suivre en détail")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Theme.text)
+                    Text("\(stManager.trackedAppsTokens.count)/\(ScreenTimeManager.MAX_TRACKED_APPS) apps sélectionnées")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.textFaint)
+                }
+                Spacer()
+                Button {
+                    trackedAppsDraft = stManager.trackedAppsSelection
+                    showTrackedAppsPicker = true
+                } label: {
+                    Text("Choisir")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(Theme.green)
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.vertical, 4)
+
+
+            if !stManager.trackedAppsTokens.isEmpty {
+                VStack(spacing: 6) {
+                    ForEach(Array(stManager.trackedAppsTokens.enumerated()), id: \.offset) { _, token in
+                        HStack(spacing: 10) {
+                            Label(token).labelStyle(.iconOnly).frame(width: 24, height: 24)
+                            Label(token).labelStyle(.titleOnly)
+                                .font(.system(size: 13))
+                                .foregroundColor(Theme.textMuted)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 8)
+                    }
+                }
+            }
+        }
+        .familyActivityPicker(isPresented: $showTrackedAppsPicker, selection: $trackedAppsDraft)
+        .onChange(of: showTrackedAppsPicker) { _, isPresented in
+            if !isPresented {
+                stManager.saveTrackedAppsSelection(trackedAppsDraft)
+            }
+        }
+    }
+
+    // MARK: - Apps Tracked (FamilyActivitySelection)
+
+    var appsTrackedSection: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "apps.iphone")
+                    .font(.system(size: 16))
+                    .foregroundColor(Theme.textMuted)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(stManager.hasFamilySelection ? "Tracking enabled" : "Not tracking")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Theme.text)
+                    Text(stManager.hasFamilySelection
+                        ? "\(stManager.familySelection.applicationTokens.count) apps, \(stManager.familySelection.categoryTokens.count) categories"
+                        : "Pick apps to track your screen time")
+                        .font(.system(size: 13))
+                        .foregroundColor(Theme.textFaint)
+                }
+                Spacer()
+            }
+
+            Button(action: { showFamilyPicker = true }) {
+                Text(stManager.hasFamilySelection ? "Change apps" : "Select apps to track")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Theme.text)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .liquidGlass(cornerRadius: 12)
+            }
+
+            Text("Tip: tap « All Apps & Categories » at the top of the picker to track your full screen time.")
+                .font(.system(size: 12))
+                .foregroundColor(Theme.textFaint)
+                .multilineTextAlignment(.center)
+        }
+        .familyActivityPicker(isPresented: $showFamilyPicker, selection: Binding(
+            get: { stManager.familySelection },
+            set: { newSelection in
+                stManager.saveFamilySelection(newSelection)
+            }
+        ))
+    }
+
+    // MARK: - Debug / Force Sync
+
+    var debugSection: some View {
+        VStack(spacing: 12) {
+            Button(action: { runDebugCheck() }) {
+                HStack(spacing: 8) {
+                    if runningDebug {
+                        ProgressView().scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                    Text(runningDebug ? "Running..." : "Force Sync + Debug")
+                }
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(Theme.text)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .liquidGlass(cornerRadius: 12)
+            }
+            .disabled(runningDebug)
+
+            Button(action: { resetLocalScreenTimeCache() }) {
+                Text("Reset local cache")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Theme.red)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+
+            Button(action: { wipeBackendToday() }) {
+                Text("Wipe backend today (force 0)")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Theme.red)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+
+            Button(action: { simulateYesterdayRollover() }) {
+                Text("Simulate yesterday rollover (240min)")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Theme.text)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+
+            if !debugLines.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(debugLines.enumerated()), id: \.offset) { _, line in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text(line.hasPrefix("✓") ? "✓" : (line.hasPrefix("✗") ? "✗" : "•"))
+                                .foregroundColor(line.hasPrefix("✓") ? Theme.green : (line.hasPrefix("✗") ? Theme.red : Theme.textMuted))
+                                .font(.system(size: 12, weight: .bold))
+                            Text(line.hasPrefix("✓") || line.hasPrefix("✗") ? String(line.dropFirst(2)) : line)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(Theme.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .liquidGlass(cornerRadius: 10)
+            }
+        }
+    }
+
+    private func resetLocalScreenTimeCache() {
+        // UserDefaults standard
+        UserDefaults.standard.removeObject(forKey: UDKey.todayMinutes)
+        UserDefaults.standard.removeObject(forKey: UDKey.todayDate)
+        UserDefaults.standard.removeObject(forKey: UDKey.catSocial)
+        UserDefaults.standard.removeObject(forKey: UDKey.catSocialDate)
+        // App Group
+        let ag = UserDefaults(suiteName: "group.com.PAKT2")
+        ag?.removeObject(forKey: "shared_today")
+        ag?.removeObject(forKey: "shared_today_date")
+        ag?.removeObject(forKey: "shared_social")
+        ag?.removeObject(forKey: "shared_social_date")
+        ag?.synchronize()
+        // Keychain — this is where the Monitor extension writes
+        deleteKeychain(key: "shared_today")
+        deleteKeychain(key: "shared_today_date")
+        deleteKeychain(key: "shared_social")
+        deleteKeychain(key: "shared_social_date")
+        deleteKeychain(key: "dar_debug")
+        stManager.profileToday = 0
+        stManager.categorySocial = 0
+        stManager.updateLocalGroups(appState: appState)
+        // Restart monitoring with fresh state
+        stManager.startBackgroundMonitoring()
+        debugLines = ["✓ Local cache reset (UD + AppGroup + Keychain)"]
+    }
+
+    /// Simule un rollover de minuit : écrit shared_history avec hier=240min
+    /// et déclenche un loadProfileCache pour drainer vers historyRaw.
+    /// Vérifie la barre "hier" dans le weekChart après tap.
+    private func simulateYesterdayRollover() {
+        let cal = Calendar.current
+        let df = ScreenTimeManager.dateFormatter
+        let yesterday = df.string(from: cal.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+        let ag = UserDefaults(suiteName: "group.com.PAKT2")
+        let existing = ag?.string(forKey: "shared_history") ?? ""
+        var byDate: [String: Int] = [:]
+        for entry in existing.split(separator: ",") {
+            let parts = entry.split(separator: ":")
+            guard parts.count == 2, let m = Int(parts[1]) else { continue }
+            byDate[String(parts[0])] = m
+        }
+        byDate[yesterday] = 240
+        let raw = byDate.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: ",")
+        ag?.set(raw, forKey: "shared_history")
+        ag?.synchronize()
+        stManager.loadProfileCache()
+        debugLines = ["✓ Wrote shared_history: \(yesterday)=240", "✓ Triggered loadProfileCache"]
+    }
+
+    private func deleteKeychain(key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+            kSecAttrAccessGroup as String: "9U5UZW39LQ.com.PAKT2"
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    /// Force-wipes today's score on the backend via /scores/correct (direct
+    /// assign, bypasses GREATEST). Use this to unpoison a stale inflated
+    /// value previously written by the broken Monitor extension. After wiping,
+    /// the next DAR render (release build only) will repopulate correctly.
+    private func wipeBackendToday() {
+        let today = ScreenTimeManager.dateFormatter.string(from: Date())
+        debugLines = ["• Wiping backend today score for \(today)..."]
+        Task {
+            do {
+                try await APIClient.shared.correctScore(minutes: 0, socialMinutes: 0, date: today)
+                await MainActor.run {
+                    stManager.profileToday = 0
+                    stManager.categorySocial = 0
+                    stManager.updateLocalGroups(appState: appState)
+                    debugLines = ["✓ Backend today wiped to 0 for \(today)"]
+                }
+            } catch {
+                await MainActor.run {
+                    debugLines = ["✗ Wipe failed: \(error.localizedDescription)"]
+                }
+            }
+        }
+    }
+
+    private func runDebugCheck() {
+        runningDebug = true
+        debugLines = []
+        Task {
+            await MainActor.run {
+                debugLines.append("— Starting debug —")
+            }
+
+            // 1. Family Activity Selection
+            await MainActor.run {
+                if stManager.hasFamilySelection {
+                    debugLines.append("✓ Family selection: \(stManager.familySelection.applicationTokens.count) apps, \(stManager.familySelection.categoryTokens.count) cats")
+                } else {
+                    debugLines.append("✗ NO family selection — pick apps first")
+                }
+            }
+
+            // 2. Profile today value
+            await MainActor.run {
+                debugLines.append("• profileToday = \(stManager.profileToday) min")
+                debugLines.append("• categorySocial = \(stManager.categorySocial) min")
+                debugLines.append("• profileHistory count = \(stManager.profileHistory.count)")
+                if let last = stManager.profileHistory.last {
+                    debugLines.append("• profileHistory last = \(last.date): \(last.minutes) min")
+                }
+                // Check if today's date is in history
+                let todayKey = ScreenTimeManager.dateFormatter.string(from: Date())
+                if let todayInHistory = stManager.profileHistory.first(where: { $0.date == todayKey }) {
+                    debugLines.append("✓ HistoryKey has today: \(todayInHistory.minutes) min")
+                } else {
+                    debugLines.append("✗ HistoryKey does NOT have today")
+                }
+            }
+
+            // 3. Keychain extension token
+            let hasToken = AuthManager.shared.extensionToken != nil
+            await MainActor.run {
+                if hasToken {
+                    debugLines.append("✓ Extension token present")
+                } else {
+                    debugLines.append("✗ NO extension token in Keychain")
+                }
+            }
+
+            // 4. Access token
+            let hasAccess = APIClient.shared.accessToken != nil
+            await MainActor.run {
+                if hasAccess {
+                    debugLines.append("✓ Access token present")
+                } else {
+                    debugLines.append("✗ NO access token")
+                }
+            }
+
+            // 5. Try manual POST with current profileToday
+            let testMinutes = stManager.profileToday
+            if testMinutes > 0 {
+                do {
+                    let todayStr = ScreenTimeManager.dateFormatter.string(from: Date())
+                    try await APIClient.shared.syncScore(minutes: testMinutes, socialMinutes: nil, date: todayStr)
+                    await MainActor.run {
+                        debugLines.append("✓ POST /scores/sync OK with \(testMinutes) min")
+                    }
+                } catch {
+                    await MainActor.run {
+                        debugLines.append("✗ POST FAILED: \(error.localizedDescription)")
+                    }
+                }
+            } else {
+                await MainActor.run {
+                    debugLines.append("✗ profileToday = 0, nothing to sync")
+                }
+            }
+
+            // 6. Refresh groups from backend
+            await appState.refreshGroupsOnly()
+            await MainActor.run {
+                debugLines.append("• Groups refreshed from backend")
+                let uid = appState.currentUID
+                for group in appState.groups.filter({ !$0.isDemo }) {
+                    if let me = group.members.first(where: { $0.uid == uid }) {
+                        debugLines.append("  \(group.name): my today = \(me.todayMinutes) min")
+                    }
+                }
+            }
+
+            // 7. Restart monitoring
+            stManager.startBackgroundMonitoring()
+            await MainActor.run {
+                debugLines.append("• Background monitoring restarted")
+                debugLines.append("— Done —")
+                runningDebug = false
+            }
+        }
+    }
+
     // MARK: - Preferences
 
     var preferencesSection: some View {
@@ -342,7 +698,7 @@ struct SettingsView: View {
                         Toggle("", isOn: $notificationsOn)
                             .labelsHidden()
                             .tint(Theme.green)
-                            .onChange(of: notificationsOn) { on in
+                            .onChange(of: notificationsOn) { _, on in
                                 if on { NotificationService.shared.scheduleDailyReminder() }
                                 else  { NotificationService.shared.cancelDailyReminder() }
                             }
@@ -366,6 +722,37 @@ struct SettingsView: View {
             )
 
         }
+    }
+
+    @State private var calibrationPct: Double = ScreenTimeManager.calibrationFactor * 100
+
+    private var calibrationRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "slider.horizontal.3")
+                    .foregroundColor(Theme.green)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Calibration Screen Time")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Theme.text)
+                    Text("Corrige la surestimation d'Apple DAM")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.textFaint)
+                }
+                Spacer()
+                Text("\(Int(calibrationPct))%")
+                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .foregroundColor(Theme.green)
+            }
+            Slider(value: $calibrationPct, in: 30...100, step: 1)
+                .tint(Theme.green)
+                .onChange(of: calibrationPct) { _, newValue in
+                    ScreenTimeManager.setCalibrationFactor(newValue / 100)
+                    ScreenTimeManager.shared.loadProfileCache()
+                }
+        }
+        .padding(.vertical, 10)
     }
 
     // Language picker removed — English only for now

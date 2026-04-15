@@ -39,11 +39,11 @@ struct OnboardingView: View {
         .transaction { t in
             if step != 1 { t.animation = .easeInOut(duration: 0.35) }
         }
-        .onChange(of: firebase.isLoggedIn) { loggedIn in
+        .onChange(of: firebase.isLoggedIn) { _, loggedIn in
             guard loggedIn, !firebase.needsEmailVerification, let user = firebase.currentUser else { return }
             proceedAfterAuth(user: user)
         }
-        .onChange(of: firebase.needsEmailVerification) { needs in
+        .onChange(of: firebase.needsEmailVerification) { _, needs in
             guard !needs, firebase.isLoggedIn, let user = firebase.currentUser else { return }
             proceedAfterAuth(user: user)
         }
@@ -128,7 +128,7 @@ struct OnboardingView: View {
                     if !isSignIn {
                         VStack(alignment: .leading, spacing: 4) {
                             AppField(label: L10n.t("username"), text: $firstName, uppercase: false)
-                                .onChange(of: firstName) { val in
+                                .onChange(of: firstName) { _, val in
                                     // Forcer minuscules, pas d'espaces, caractères autorisés seulement
                                     let clean = val.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "." }
                                     if clean != val { firstName = clean }
@@ -163,16 +163,10 @@ struct OnboardingView: View {
                                     .foregroundColor(acceptedTerms ? Theme.text : Theme.textFaint)
                             }
                             VStack(alignment: .leading, spacing: 2) {
-                                (Text(L10n.t("accept_terms_prefix"))
-                                    .foregroundColor(Theme.textMuted) +
-                                Text(L10n.t("terms_of_use"))
-                                    .foregroundColor(Theme.text)
-                                    .underline() +
-                                Text(L10n.t("accept_terms_and"))
-                                    .foregroundColor(Theme.textMuted) +
-                                Text(L10n.t("privacy_policy"))
-                                    .foregroundColor(Theme.text)
-                                    .underline())
+                                // Text-interpolation composition (the `+` operator
+                                // was deprecated in iOS 26). Same visual result —
+                                // each sub-Text keeps its own color/underline.
+                                Text("\(Text(L10n.t("accept_terms_prefix")).foregroundColor(Theme.textMuted))\(Text(L10n.t("terms_of_use")).foregroundColor(Theme.text).underline())\(Text(L10n.t("accept_terms_and")).foregroundColor(Theme.textMuted))\(Text(L10n.t("privacy_policy")).foregroundColor(Theme.text).underline())")
                                     .font(.system(size: 14))
                                     .lineSpacing(3)
                                     .onTapGesture {
@@ -360,7 +354,7 @@ struct OnboardingView: View {
             }
         }
         .animation(.easeInOut(duration: 0.35), value: wtPage)
-        .onChange(of: scenePhase) { phase in
+        .onChange(of: scenePhase) { _, phase in
             if phase == .active && wtPage == wtPages.count - 1 {
                 // Retour des Réglages — vérifier si l'accès a été accordé
                 stManager.refreshAuthorizationStatus()
@@ -483,7 +477,7 @@ struct OnboardingView: View {
                     .foregroundColor(Theme.text)
                 VStack(alignment: .leading, spacing: 8) {
                     AppField(label: L10n.t("username"), text: $appleUsername, uppercase: false)
-                        .onChange(of: appleUsername) { val in
+                        .onChange(of: appleUsername) { _, val in
                             let clean = val.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "." }
                             if clean != val { appleUsername = clean }
                             appleUsernameError = nil
@@ -553,7 +547,7 @@ struct OnboardingView: View {
                     .foregroundColor(Theme.text)
                     .multilineTextAlignment(.center)
                     .keyboardType(.numberPad)
-                    .onChange(of: verificationCode) { v in
+                    .onChange(of: verificationCode) { _, v in
                         verificationCode = String(v.filter { $0.isNumber }.prefix(6))
                     }
                 Rectangle().fill(Theme.border).frame(height: 1).padding(.horizontal, 60)
@@ -645,7 +639,7 @@ struct OnboardingJoinGroupSheet: View {
                         .multilineTextAlignment(.center)
                         .autocapitalization(.allCharacters)
                         .disableAutocorrection(true)
-                        .onChange(of: code) { v in code = v.uppercased(); errorMsg = nil }
+                        .onChange(of: code) { _, v in code = v.uppercased(); errorMsg = nil }
                     Rectangle().fill(Theme.border).frame(height: 1).padding(.horizontal, 40)
                 }
                 if let err = errorMsg {

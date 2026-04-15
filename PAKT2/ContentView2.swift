@@ -24,7 +24,7 @@ struct ContentView: View {
             }
         }
         .onReceive(AuthManager.shared.$currentUser) { user in
-            guard let user, appState.isOnboarded else { return }
+            guard user != nil, appState.isOnboarded else { return }
             Task {
                 await appState.syncFromBackend()
                 InvitationManager.shared.startListening()
@@ -51,10 +51,10 @@ struct ContentView: View {
                 }
             }
         }
-        .onChange(of: isDarkMode) { newValue in
+        .onChange(of: isDarkMode) { _, newValue in
             applyInterfaceStyle(newValue)
         }
-        .onChange(of: scenePhase) { phase in
+        .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 stManager.refreshAuthorizationStatus()
                 if stManager.isAuthorized {
@@ -63,6 +63,11 @@ struct ContentView: View {
                     // Auth perdue (ex: l'utilisateur a touché aux réglages Temps d'écran)
                     Task { await stManager.requestAuthorization() }
                 }
+                // Force read Keychain/AppGroup + POST to backend on foreground
+                // The Monitor extension wrote fresh values while we were backgrounded.
+                stManager.loadProfileCache()
+                stManager.updateLocalGroups(appState: appState)
+                stManager.syncToBackend(appState: appState)
                 Task {
                     let ok = await AuthManager.shared.refreshTokens()
                     if ok {
@@ -95,7 +100,16 @@ struct ContentView: View {
         )
     }
 
+    // Global today filter used by the background DAR
+    private var globalTodayFilter: DeviceActivityFilter {
+        DeviceActivityFilter(
+            segment: .hourly(during: DateInterval(start: Calendar.current.startOfDay(for: Date()), end: Date())),
+            devices: .init([.iPhone])
+        )
+    }
+
     var mainApp: some View {
+        ZStack(alignment: .topLeading) {
         VStack(spacing: 0) {
             // Offline banner
             if !networkMonitor.isConnected {
@@ -168,17 +182,12 @@ struct ContentView: View {
                     .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: -4)
             )
         }
-        .animation(.easeInOut(duration: 0.3), value: networkMonitor.isConnected)
-        .onPreferenceChange(TodayMinutesKey.self) { minutes in
-            guard minutes > 0 else { return }
-            let todayStr = ScreenTimeManager.dateFormatter.string(from: Date())
-            UserDefaults.standard.set(minutes, forKey: UDKey.todayMinutes)
-            UserDefaults.standard.set(todayStr, forKey: UDKey.todayDate)
-            stManager.updateProfileToday(minutes)
-            stManager.injectTodayIntoHistory(date: todayStr, minutes: minutes)
-            stManager.updateLocalGroups(appState: appState)
-            stManager.syncToBackend(appState: appState)
+
         }
+        .animation(.easeInOut(duration: 0.3), value: networkMonitor.isConnected)
+        // DAR IPC bridge removed 2026-04-14 — see ProfileView2.swift for rationale.
+        // DAM extension is now the sole source of today's minutes; foreground
+        // reads come from App Group / Keychain via ScreenTimeManager.loadProfileCache.
         .onPreferenceChange(SocialMinutesKey.self) { social in
             guard social > 0 else { return }
             stManager.updateCategorySocial(social)

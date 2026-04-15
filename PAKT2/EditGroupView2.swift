@@ -40,8 +40,7 @@ struct EditGroupView: View {
                         // Member avatars
                         HStack(spacing: -10) {
                             ForEach(Array(group.members.prefix(5).enumerated()), id: \.offset) { i, member in
-                                AvatarView(name: member.name, size: 40, color: Theme.textMuted,
-                                           uid: member.uid, isMe: appState.isMe(member))
+                                UserAvatarButton(uid: member.uid, name: member.name, size: 40, color: Theme.textMuted, isMe: appState.isMe(member), disabled: member.uid.isEmpty)
                                     .environmentObject(appState)
                                     .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
                                     .zIndex(Double(5 - i))
@@ -240,8 +239,7 @@ struct EditGroupView: View {
             VStack(spacing: 0) {
                 ForEach(Array(group.members.enumerated()), id: \.element.id) { i, member in
                     HStack(spacing: 12) {
-                        AvatarView(name: member.name, size: 40, color: Theme.textMuted,
-                                   uid: member.uid, isMe: appState.isMe(member))
+                        UserAvatarButton(uid: member.uid, name: member.name, size: 40, color: Theme.textMuted, isMe: appState.isMe(member), disabled: member.uid.isEmpty)
                             .environmentObject(appState)
 
                         VStack(alignment: .leading, spacing: 2) {

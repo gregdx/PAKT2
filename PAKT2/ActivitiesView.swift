@@ -45,7 +45,11 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var activityEmoji: String? = nil
     var response: String? = nil
 
+    // Shared event (new, step 4)
+    var eventId: String? = nil
+
     var isActivity: Bool { activityTitle != nil }
+    var isEventShare: Bool { eventId != nil }
     var isFromMe: Bool { fromId == (AuthManager.shared.currentUser?.id ?? "") }
     var otherUid: String { isFromMe ? toId : fromId }
 
@@ -66,14 +70,16 @@ struct ChatMessage: Identifiable, Codable, Equatable {
         text = try c.decodeIfPresent(String.self, forKey: .text)
         activityTitle = try c.decodeIfPresent(String.self, forKey: .activityTitle)
         activityEmoji = try c.decodeIfPresent(String.self, forKey: .activityEmoji)
+        eventId = try c.decodeIfPresent(String.self, forKey: .eventId)
         response = try c.decodeIfPresent(String.self, forKey: .response)
     }
 
     // Manual init for creating messages locally
-    init(id: String = UUID().uuidString, fromId: String, fromName: String, toId: String = "", groupId: String? = nil, createdAt: Date = Date(), text: String? = nil, activityTitle: String? = nil, activityEmoji: String? = nil, response: String? = nil) {
+    init(id: String = UUID().uuidString, fromId: String, fromName: String, toId: String = "", groupId: String? = nil, createdAt: Date = Date(), text: String? = nil, activityTitle: String? = nil, activityEmoji: String? = nil, eventId: String? = nil, response: String? = nil) {
         self.id = id; self.fromId = fromId; self.fromName = fromName; self.toId = toId
         self.groupId = groupId; self.createdAt = createdAt; self.text = text
-        self.activityTitle = activityTitle; self.activityEmoji = activityEmoji; self.response = response
+        self.activityTitle = activityTitle; self.activityEmoji = activityEmoji
+        self.eventId = eventId; self.response = response
     }
 }
 
@@ -136,7 +142,8 @@ final class ActivityManager: ObservableObject {
                     createdAt: ws.createdAt ?? Date(),
                     text: ws.text,
                     activityTitle: ws.activityTitle,
-                    activityEmoji: ws.activityEmoji
+                    activityEmoji: ws.activityEmoji,
+                    eventId: ws.eventId
                 )
                 self.messages.append(msg)
                 // Un-delete/un-archive conversation when new message arrives
@@ -674,7 +681,7 @@ struct ConversationView: View {
                         proxy.scrollTo("bottom", anchor: .bottom)
                     }
                 }
-                .onChange(of: chatMessages.count) { _ in
+                .onChange(of: chatMessages.count) { _, _ in
                     withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
                 }
                 .onTapGesture { isTextFocused = false }
@@ -883,7 +890,7 @@ struct ConversationView: View {
 
     func messageBubble(_ msg: ChatMessage, index: Int) -> some View {
         let isMine = msg.fromId == myUid
-        let isFirst = isFirstInGroup(index)
+        let _ = isFirstInGroup(index)
         let isLast = isLastInGroup(index)
 
         return HStack(alignment: .bottom, spacing: 8) {
@@ -892,8 +899,7 @@ struct ConversationView: View {
             // Avatar: only show on last message of a group from other person
             if !isMine {
                 if isLast {
-                    AvatarView(name: msg.fromName, size: 28, color: Theme.textMuted,
-                               uid: msg.fromId, isMe: false)
+                    UserAvatarButton(uid: msg.fromId, name: msg.fromName, size: 28, color: Theme.textMuted, isMe: false, disabled: msg.fromId.isEmpty)
                         .environmentObject(appState)
                 } else {
                     Spacer().frame(width: 28)
@@ -909,8 +915,12 @@ struct ConversationView: View {
                             }
                         }
                         .contextMenu { messageContextMenu(msg) }
+                } else if let evId = msg.eventId {
+                    // Shared event — renders as ChatEventCard, tap opens detail sheet.
+                    ChatEventCard(eventId: evId, isMine: isMine)
+                        .contextMenu { messageContextMenu(msg) }
                 } else {
-                    // Text bubble (with event card detection)
+                    // Text bubble (with legacy event card detection for text-parsed events)
                     EventMessageCard(text: msg.text ?? "", isMine: isMine)
                         .contextMenu { messageContextMenu(msg) }
                 }
@@ -1124,15 +1134,11 @@ struct ActivityPickerSheet: View {
                         Button(action: { withAnimation(.easeInOut(duration: 0.2)) { pickerTab = tab } }) {
                             Text(tab.label)
                                 .font(.system(size: 14, weight: pickerTab == tab ? .semibold : .regular))
-                                .foregroundColor(pickerTab == tab ? Theme.bg : Theme.textMuted)
+                                .foregroundColor(pickerTab == tab ? .white : Theme.text)
                                 .padding(.vertical, 7).padding(.horizontal, 16)
-                                .background {
-                                    if pickerTab == tab {
-                                        RoundedRectangle(cornerRadius: 18).fill(Theme.text)
-                                    } else {
-                                        RoundedRectangle(cornerRadius: 18).fill(.clear).liquidGlass(cornerRadius: 18)
-                                    }
-                                }
+                                .background(
+                                    Capsule().fill(pickerTab == tab ? Theme.text : Theme.bgCard)
+                                )
                         }
                     }
                     Spacer()

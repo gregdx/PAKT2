@@ -171,8 +171,10 @@ struct DataPoint: Identifiable {
 // isMe est calculé à l'affichage : member.uid == currentUser.uid
 
 struct Member: Identifiable {
-    let id           = UUID()
     var uid          : String = ""   // Firebase uid — vide pour membres fictifs
+    // Use uid as SwiftUI identity so view identity stays stable across re-decodes.
+    // Demo/fiction members have empty uid → fall back to a deterministic name-based id.
+    var id: String { uid.isEmpty ? "demo_\(name)" : uid }
     var name         : String
     var todayMinutes : Int
     var weekMinutes  : Int
@@ -181,6 +183,7 @@ struct Member: Identifiable {
     var monthSocialMinutes : Int = 0
     var history      : [DataPoint]
     var bio          : String = ""
+    var lastSyncAt   : Date? = nil
 
     // Moyenne depuis l'historique réel
     var weekAvgMinutes: Int {
@@ -192,6 +195,20 @@ struct Member: Identifiable {
         let all = history.map { $0.minutes }.filter { $0 > 0 }
         guard !all.isEmpty else { return 0 }
         return all.reduce(0, +) / all.count
+    }
+
+    /// Returns the number of hours since the last successful sync, or nil
+    /// if the user has never synced. Used by the "Cache sa honte" UI.
+    var hoursSinceLastSync: Double? {
+        guard let last = lastSyncAt else { return nil }
+        return Date().timeIntervalSince(last) / 3600.0
+    }
+
+    /// True if the user hasn't synced recently (> 3h ago or never synced).
+    /// Members in this state are flagged — possible reinstall/cheat.
+    var isSyncStale: Bool {
+        guard let h = hoursSinceLastSync else { return true }
+        return h > 3
     }
 
     func goalReached(limit: Int) -> Bool { todayMinutes <= limit }

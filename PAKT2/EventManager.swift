@@ -43,7 +43,7 @@ struct PaktEvent: Identifiable, Codable, Equatable {
     var mapsURL: URL? {
         guard !address.isEmpty else { return nil }
         let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        return URL(string: "https://www.google.com/maps/search/?api=1&query=\(encoded)")
+        return URL(string: "https://maps.apple.com/?q=\(encoded)")
     }
 
     var image: UIImage? {

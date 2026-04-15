@@ -1,6 +1,8 @@
 import SwiftUI
 import PhotosUI
 import DeviceActivity
+import FamilyControls
+import ManagedSettings
 
 // MARK: - ProfileView
 
@@ -16,10 +18,20 @@ struct ProfileView: View {
     @State private var showSettings  = false
     @State private var profileRefreshTimer: Timer? = nil
     @State private var isTimerRunning = false
+    @State private var darRefreshId: Int = 0
+    @State private var openURLReceivedMinutes: Int = 0
     @State private var tappedDay: String? = nil
     @State private var myAchievements: Set<String> = []
     @State private var showAllMedals = false
     @State private var showGroupDetail = false
+    @State private var showAppPicker = false
+    @State private var showReaderInfo = false
+    @State private var autoPickAttempted = false
+
+    private var hasAppSelection: Bool {
+        !stManager.familySelection.applicationTokens.isEmpty ||
+        !stManager.familySelection.categoryTokens.isEmpty
+    }
     @State private var selectedGroupId: UUID? = nil
     @State private var headerAppeared = false
     @State private var statsAppeared = false
@@ -33,25 +45,62 @@ struct ProfileView: View {
         guard !isTimerRunning else { return }
         isTimerRunning = true
         ScreenTimeManager.shared.loadProfileCache()
-        // Relire toutes les 10 secondes
+        // Relire toutes les 10 secondes + force DAR recompute
         profileRefreshTimer?.invalidate()
         profileRefreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
             ScreenTimeManager.shared.loadProfileCache()
+            // Don't change darRefreshId — it forces the DAR extension to
+            // fully reload (white flash). The DAR renders once on appear
+            // and stays stable. Only refresh on explicit pull-to-refresh.
         }
     }
 
-    // Filtres : .iPhone uniquement pour ne pas agréger les données d'autres appareils
+    // Filter DAR to the SAME scope as DeviceActivityMonitor: user's family
+    // selection, across all devices. This ensures the value displayed on
+    // profile matches what the Monitor writes to App Group (no more DAR vs
+    // DAM discrepancy). DeviceActivityEvent has no device filter, so DAM
+    // always counts cross-device — we drop .iPhone from DAR to match.
     private var todayFilter: DeviceActivityFilter {
-        DeviceActivityFilter(
-            segment: .daily(during: DateInterval(start: Calendar.current.startOfDay(for: Date()), end: Date())),
+        let selection = stManager.familySelection
+        return DeviceActivityFilter(
+            segment: .hourly(during: DateInterval(start: Calendar.current.startOfDay(for: Date()), end: Date())),
+            users: .all,
+            devices: .all,
+            applications: selection.applicationTokens,
+            categories: selection.categoryTokens,
+            webDomains: selection.webDomainTokens
+        )
+    }
+
+    /// DAR filter for today-only per-app breakdown. Hourly segment so the
+    /// TodayScene sees only today's apps (it sums across the segment range).
+    private var darTodayAppsFilter: DeviceActivityFilter {
+        let start = Calendar.current.startOfDay(for: Date())
+        let end = Date()
+        return DeviceActivityFilter(
+            segment: .hourly(during: DateInterval(start: start, end: max(end, start.addingTimeInterval(60)))),
+            devices: .init([.iPhone])
+        )
+    }
+
+    /// DAR filter: 7 days for chart + today for apps. No app restriction.
+    private var darProfileFilter: DeviceActivityFilter {
+        let end = Date()
+        let start = Calendar.current.date(byAdding: .day, value: -6, to: Calendar.current.startOfDay(for: end)) ?? end
+        return DeviceActivityFilter(
+            segment: .daily(
+                during: DateInterval(start: start, end: end)
+            ),
             devices: .init([.iPhone])
         )
     }
     private var weekFilter: DeviceActivityFilter {
+        // Use .hourly instead of .daily — .daily is buggy and gives wrong values
+        // for today (partial day). The chart scene aggregates hourly into daily.
         let end = Date()
-        let start = Calendar.current.date(byAdding: .day, value: -14, to: end) ?? end
+        let start = Calendar.current.date(byAdding: .day, value: -7, to: end) ?? end
         return DeviceActivityFilter(
-            segment: .daily(during: DateInterval(start: start, end: end)),
+            segment: .hourly(during: DateInterval(start: start, end: end)),
             devices: .init([.iPhone])
         )
     }
@@ -59,7 +108,7 @@ struct ProfileView: View {
         let end = Date()
         let start = Calendar.current.date(byAdding: .day, value: -30, to: end) ?? end
         return DeviceActivityFilter(
-            segment: .daily(during: DateInterval(start: start, end: end)),
+            segment: .hourly(during: DateInterval(start: start, end: end)),
             devices: .init([.iPhone])
         )
     }
@@ -73,39 +122,28 @@ struct ProfileView: View {
                 VStack(spacing: 0) {
                     header
 
-                    // DARs — 5 scenes séparées (comme avant)
-                    VStack(spacing: 0) {
-                        DeviceActivityReport(.init(rawValue: "todayTotal"), filter: todayFilter)
-                            .frame(maxWidth: .infinity, minHeight: 1)
-                        DeviceActivityReport(.init(rawValue: "weekAverage"), filter: weekFilter)
-                            .frame(maxWidth: .infinity, minHeight: 1)
-                        DeviceActivityReport(.init(rawValue: "monthAverage"), filter: monthFilter)
-                            .frame(maxWidth: .infinity, minHeight: 1)
-                        DeviceActivityReport(.init(rawValue: "categories"), filter: todayFilter)
-                            .frame(maxWidth: .infinity, minHeight: 1)
-                        DeviceActivityReport(.init(rawValue: "weekChart"), filter: weekFilter)
-                            .frame(maxWidth: .infinity, minHeight: 1)
-                    }
-                    .frame(height: 5).opacity(0.01)
-                    .allowsHitTesting(false)
-
-                    // Stats SwiftUI
-                    VStack(spacing: 0) {
-                        todayScore
-
-                        streakBadge
-
-                        avgStats
-
-                        weekChart
-
-                        insightCard
-                    }
-
-                    // Achievements
-                    medalsCard
+                    // DAR view — exact Apple screen time, no app filter restriction.
+                    // Shows: today total + per-app breakdown + 14-day chart.
+                    // Rendered by the extension with full access to Screen Time data.
+                    // DAR exact screen time: today total + per-app breakdown.
+                    // DeviceActivityReport needs explicit height — iOS doesn't
+                    // report intrinsic size from extensions to the host.
+                    // Screen time from the Opal-style background reader.
+                    // Tracks ALL apps — no selection, no cheating.
+                    todayScore
                         .padding(.horizontal, 24)
-                        .padding(.top, 24)
+                        .padding(.top, 4)
+
+                    poisonSection
+                        .padding(.top, 14)
+                        .padding(.horizontal, 24)
+
+                    weekChart
+                        .padding(.top, 14)
+                        .padding(.horizontal, 24)
+
+                    ProfileAgendaSection(userId: appState.currentUID)
+                        .padding(.top, 18)
 
                     Spacer().frame(height: 80)
                 }
@@ -151,18 +189,11 @@ struct ProfileView: View {
             ScreenTimeManager.shared.syncToBackend(appState: appState)
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
-        .onPreferenceChange(TodayMinutesKey.self) { minutes in
-            guard minutes > 0 else { return }
-            Log.d("[PAKT Profile] TodayMinutes received: \(minutes)")
-            let todayStr = ScreenTimeManager.dateFormatter.string(from: Date())
-            UserDefaults.standard.set(minutes, forKey: UDKey.todayMinutes)
-            UserDefaults.standard.set(todayStr, forKey: UDKey.todayDate)
-            stManager.updateProfileToday(minutes)
-            stManager.injectTodayIntoHistory(date: todayStr, minutes: minutes)
-            // Pousser la valeur réelle au backend (corrige les seuils arrondis du monitor)
-            let social = stManager.categorySocial
-            Task { try? await APIClient.shared.syncScore(minutes: minutes, socialMinutes: social, date: todayStr) }
-        }
+        // DAR IPC bridge removed 2026-04-14: DAR extensions are sandboxed and
+        // cannot reliably push data to the host (confirmed Apr 12). The DAM
+        // extension is now the sole source of truth; foreground syncs read
+        // from App Group / Keychain. DAR view is kept for visual rendering
+        // only (see PassthroughDAR.swift).
         .onPreferenceChange(SocialMinutesKey.self) { social in
             guard social > 0 else { return }
             stManager.updateCategorySocial(social)
@@ -196,6 +227,13 @@ struct ProfileView: View {
         .sheet(isPresented: $showFriends) {
             FriendsView().environmentObject(appState)
         }
+        .familyActivityPicker(isPresented: $showAppPicker, selection: Binding(
+            get: { stManager.familySelection },
+            set: { newSelection in
+                stManager.saveFamilySelection(newSelection)
+                stManager.startBackgroundMonitoring()
+            }
+        ))
         .sheet(isPresented: $showSettings, onDismiss: {
             if stManager.pendingAuthRequest {
                 stManager.pendingAuthRequest = false
@@ -212,7 +250,7 @@ struct ProfileView: View {
                 } onDismiss: { showGroupDetail = false }
             }
         }
-        .onChange(of: scenePhase) { phase in
+        .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 ScreenTimeManager.shared.loadProfileCache()
                 ScreenTimeManager.shared.syncToBackend(appState: appState)
@@ -222,20 +260,42 @@ struct ProfileView: View {
 
     // MARK: - Today score
 
-    private var todayScore: some View {
-        VStack(spacing: 6) {
-            Text(stManager.profileToday > 0 ? formatTime(stManager.profileToday) : "--")
-                .font(.system(size: 48, weight: .bold))
-                .foregroundColor(Theme.text)
-                .contentTransition(.numericText())
-            Text(L10n.t("today").uppercased())
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Theme.textFaint)
-                .tracking(1.5)
+        private var todayScore: some View {
+            VStack(spacing: 2) {
+                ZStack(alignment: .topTrailing) {
+                    Text(stManager.profileToday > 0 ? formatTime(stManager.profileToday) : "--")
+                        .font(.system(size: 48, weight: .bold))
+                        .foregroundColor(Theme.text)
+                        .contentTransition(.numericText())
+                        .padding(.horizontal, 22) // On donne de l'air pour le bouton info
+                    
+                    Button {
+                        showReaderInfo = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 10))
+                            .foregroundColor(Theme.textFaint.opacity(0.4))
+                            .offset(x: -4, y: 8) // Ajustement pour qu'il soit bien collé au chiffre
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                Text(L10n.t("today").uppercased())
+                    .font(.system(size: 12, weight: .semibold))
+                    // On utilise une opacité très basse pour matcher le style "glass"
+                    .foregroundColor(Theme.text.opacity(0.3))
+                    .tracking(1.5)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16) // Encadré plus petit
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white.opacity(0.4))
+            )
+            .liquidGlass(cornerRadius: 16, style: .ultraThin)
+            .scaleEffect(statsAppeared ? 1.0 : 0.9)
+            .opacity(statsAppeared ? 1.0 : 0.0)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-    }
 
     // MARK: - Streak
 
@@ -270,30 +330,140 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Week avg / Month avg
+  
 
-    private var avgStats: some View {
-        HStack(spacing: 0) {
-            avgCell(minutes: stManager.profileWeekAvg, label: L10n.t("week_avg"))
-                .frame(maxWidth: .infinity)
-            Rectangle().fill(Theme.separator).frame(width: 0.5, height: 48)
-            avgCell(minutes: stManager.profileMonthAvg, label: L10n.t("month_avg"))
-                .frame(maxWidth: .infinity)
+    // MARK: - YOUR FLAWS (DAR-sourced, icons only — no info bleeding in)
+
+    private var poisonSection: some View {
+        PassthroughDAR {
+            DeviceActivityReport(.init(rawValue: "todayTotal"), filter: darTodayAppsFilter)
+                .id(darRefreshId)
         }
-        .padding(.horizontal, 24)
+        .frame(height: 108)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.4))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .liquidGlass(cornerRadius: 16, style: .ultraThin)
     }
 
-    private func avgCell(minutes: Int, label: String) -> some View {
-        VStack(spacing: 4) {
-            Text(minutes > 0 ? formatTime(minutes) : "--")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundColor(Theme.text)
-            Text(label.uppercased())
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Theme.textFaint)
-                .tracking(1.0)
+    // MARK: - Per-app breakdown (DAM-sourced, kept for future group scope="apps")
+
+    @ViewBuilder
+    private var perAppDAMSection: some View {
+        let liveEntries = stManager.perAppBreakdown
+        // Build display list: one row per tracked token, merged with live
+        // minutes when the Monitor has fired. If nothing is tracked yet,
+        // fall back to 3 zero-value placeholder rows so the section isn't
+        // empty while auto-detection is pending.
+        let rows: [AppRowDisplay] = {
+            let tokens = stManager.trackedAppsTokens
+            if tokens.isEmpty {
+                return (0..<3).map { AppRowDisplay(index: $0, token: nil, minutes: 0) }
+            }
+            let liveByIndex = Dictionary(uniqueKeysWithValues: liveEntries.map { ($0.index, $0.minutes) })
+            return tokens.enumerated().map { (idx, token) in
+                AppRowDisplay(index: idx, token: token, minutes: liveByIndex[idx] ?? 0)
+            }
+            .sorted { $0.minutes > $1.minutes }
+            .prefix(10)
+            .map { $0 }
+        }()
+
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Les plus utilisées")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Theme.textMuted)
+                Spacer()
+            }
+
+            VStack(spacing: 8) {
+                ForEach(rows, id: \.index) { row in
+                    perAppDisplayRow(row: row)
+                }
+            }
         }
-        .frame(height: 56)
+    }
+
+    private struct AppRowDisplay {
+        let index: Int
+        let token: ApplicationToken?
+        let minutes: Int
+    }
+
+    @ViewBuilder
+    private func perAppDisplayRow(row: AppRowDisplay) -> some View {
+        HStack(spacing: 12) {
+            if let token = row.token {
+                Label(token).labelStyle(.iconOnly)
+                    .frame(width: 28, height: 28)
+                Label(token).labelStyle(.titleOnly)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Theme.text)
+                    .lineLimit(1)
+            } else {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Theme.bgWarm)
+                    .frame(width: 28, height: 28)
+                Text("—")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Theme.textFaint)
+            }
+            Spacer(minLength: 8)
+            Text(formatAppMinutes(row.minutes))
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundColor(row.minutes > 0 ? Theme.textMuted : Theme.textFaint)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.bgCard)
+        )
+    }
+
+    @ViewBuilder
+    private func perAppRow(entry: ScreenTimeManager.PerAppEntry) -> some View {
+        HStack(spacing: 12) {
+            Label(entry.token).labelStyle(.iconOnly)
+                .frame(width: 28, height: 28)
+            Label(entry.token).labelStyle(.titleOnly)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(Theme.text)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(formatAppMinutes(entry.minutes))
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundColor(Theme.textMuted)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.bgCard)
+        )
+    }
+
+    private func formatAppMinutes(_ m: Int) -> String {
+        if m < 60 { return "\(m) min" }
+        return "\(m / 60)h \(m % 60)min"
+    }
+
+    private func handleAutoPicked(_ jsonString: String) {
+        guard !autoPickAttempted, !jsonString.isEmpty,
+              stManager.trackedAppsTokens.isEmpty,
+              let data = jsonString.data(using: .utf8),
+              let tokens = try? JSONDecoder().decode([ApplicationToken].self, from: data),
+              !tokens.isEmpty else {
+            return
+        }
+        autoPickAttempted = true
+        var selection = FamilyActivitySelection()
+        selection.applicationTokens = Set(tokens)
+        stManager.saveTrackedAppsSelection(selection)
+        Log.d("[Profile] Auto-picked \(tokens.count) tracked apps from DAR")
     }
 
     // MARK: - Week chart
@@ -361,7 +531,6 @@ struct ProfileView: View {
                 .fill(Color.white.opacity(0.4))
         )
         .liquidGlass(cornerRadius: 16, style: .ultraThin)
-        .padding(.horizontal, 24)
         .padding(.top, 20)
         .scaleEffect(chartAppeared ? 1.0 : 0.9)
         .opacity(chartAppeared ? 1.0 : 0.0)
@@ -533,7 +702,7 @@ struct ProfileView: View {
     // MARK: - Header
 
     var header: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 14) {
             // Title row
             HStack {
                 Text(L10n.t("profile"))
@@ -598,7 +767,7 @@ struct ProfileView: View {
                         .offset(x: 30, y: 30)
                 }
             }
-            .onChange(of: selectedPhoto) { newItem in
+            .onChange(of: selectedPhoto) { _, newItem in
                 Task {
                     if let data = try? await newItem?.loadTransferable(type: Data.self),
                        let img  = UIImage(data: data) {
@@ -611,7 +780,7 @@ struct ProfileView: View {
                 .font(.system(size: 28, weight: .bold))
                 .foregroundColor(Theme.text)
         }
-        .padding(.bottom, 20)
+        .padding(.bottom, 6)
     }
 
 }
